@@ -28,7 +28,7 @@ Wardgate sits between your agents and the outside world. Agents talk to Wardgate
 
 ```mermaid
 flowchart LR
-    Agent[AI Agent - no creds] -->|HTTP(S)| Wardgate[Wardgate - has creds]
+    Agent[AI Agent - no creds] -->|HTTP or HTTPS| Wardgate[Wardgate - has creds]
     Wardgate -->|API| Service[External Service]
 ```
 
