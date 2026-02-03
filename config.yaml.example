@@ -60,33 +60,67 @@ endpoints:
         action: deny
         message: "Operation not permitted"
 
-   imap-personal:
-     adapter: imap
-     upstream: imaps://imap.gmail.com:993
-     auth:
-       type: plain
-       credential_env: WARDGATE_CRED_IMAP  # format: user@gmail.com:app-password
-     imap:
-       tls: true  # For ProtonBridge use no for StartTLS
-     rules:
-       # Allow listing folders
-       - match:
-           path: "/folders"
-         action: allow
-       # Allow reading inbox
-       - match:
-           path: "/folders/inbox*"
-         action: allow
-       # Allow fetching individual messages
-       - match:
-           method: GET
-           path: "/message/*"
-         action: allow
-       # Require approval for modifications
-       - match:
-           method: POST
-         action: ask
-       # Deny everything else
-       - match:
-           path: "/*"
-         action: deny
+  imap-personal:
+    adapter: imap
+    upstream: imaps://imap.gmail.com:993
+    auth:
+      type: plain
+      credential_env: WARDGATE_CRED_IMAP  # format: user@gmail.com:app-password
+    imap:
+      tls: true  # For ProtonBridge use false for StartTLS
+    rules:
+      # Allow listing folders
+      - match:
+          path: "/folders"
+        action: allow
+      # Allow reading inbox
+      - match:
+          path: "/folders/inbox*"
+        action: allow
+      # Allow fetching individual messages
+      - match:
+          method: GET
+          path: "/message/*"
+        action: allow
+      # Require approval for modifications
+      - match:
+          method: POST
+        action: ask
+      # Deny everything else
+      - match:
+          path: "/*"
+        action: deny
+
+  smtp-personal:
+    adapter: smtp
+    upstream: smtps://smtp.gmail.com:465  # Or smtp://smtp.gmail.com:587 for STARTTLS
+    auth:
+      type: plain
+      credential_env: WARDGATE_CRED_SMTP  # format: user@gmail.com:app-password
+    smtp:
+      tls: true  # Use implicit TLS (port 465). Set to false and starttls: true for port 587
+      from: "your-email@gmail.com"
+      # Allowlist recipients (if set, only these recipients can receive mail)
+      # allowed_recipients:
+      #   - "@company.com"  # Allow entire domain
+      #   - "specific@example.com"  # Allow specific address
+      # Known recipients (don't require approval)
+      known_recipients:
+        - "@company.com"
+      # Ask before sending to new recipients
+      ask_new_recipients: true
+      # Block emails containing these keywords
+      blocked_keywords:
+        - "password"
+        - "secret"
+        - "confidential"
+    rules:
+      # Allow sending emails
+      - match:
+          method: POST
+          path: "/send"
+        action: allow
+      # Deny everything else
+      - match:
+          method: "*"
+        action: deny

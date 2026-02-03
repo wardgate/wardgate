@@ -116,11 +116,12 @@ Map of endpoint names to their configuration.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `adapter` | string | No | Adapter type: `http` (default) or `imap` |
+| `adapter` | string | No | Adapter type: `http` (default), `imap`, or `smtp` |
 | `upstream` | string | Yes | URL of the upstream service |
 | `auth` | object | Yes | Authentication configuration |
 | `rules` | array | No | Policy rules (default: deny all) |
 | `imap` | object | No | IMAP-specific settings (for `adapter: imap`) |
+| `smtp` | object | No | SMTP-specific settings (for `adapter: smtp`) |
 
 ```yaml
 endpoints:
@@ -479,6 +480,105 @@ IMAP-specific configuration.
 | `tls` | bool | true | Use TLS connection |
 | `max_conns` | int | 5 | Max connections per endpoint |
 | `idle_timeout_secs` | int | 300 | Idle connection timeout |
+
+## SMTP Endpoints
+
+For SMTP endpoints, Wardgate exposes a REST API for sending emails:
+
+```yaml
+endpoints:
+  smtp-personal:
+    adapter: smtp
+    upstream: smtps://smtp.gmail.com:465  # Or smtp://smtp.gmail.com:587 for STARTTLS
+    auth:
+      type: plain
+      credential_env: SMTP_CREDS  # format: username:password
+    smtp:
+      tls: true
+      from: "your-email@gmail.com"
+      known_recipients:
+        - "@company.com"
+      ask_new_recipients: true
+      blocked_keywords:
+        - "password"
+        - "secret"
+    rules:
+      - match: { path: "/send" }
+        action: allow
+```
+
+### SMTP REST API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/send` | POST | Send an email |
+
+### Send Request Body
+
+```json
+{
+  "to": ["recipient@example.com"],
+  "cc": ["cc@example.com"],
+  "bcc": ["bcc@example.com"],
+  "reply_to": "reply@example.com",
+  "subject": "Email subject",
+  "body": "Plain text body",
+  "html_body": "<html>...</html>"
+}
+```
+
+### SMTP Upstream URL
+
+| Scheme | Port | TLS |
+|--------|------|-----|
+| `smtps://` | 465 | Implicit TLS |
+| `smtp://` | 587 | STARTTLS |
+
+### endpoints.smtp
+
+SMTP-specific configuration.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tls` | bool | false | Use implicit TLS (port 465) |
+| `starttls` | bool | true | Use STARTTLS upgrade (port 587) |
+| `from` | string | | Default from address |
+| `allowed_recipients` | array | | Allowlist of recipients (block all others) |
+| `known_recipients` | array | | Recipients that don't need approval |
+| `ask_new_recipients` | bool | false | Ask before sending to unknown recipients |
+| `blocked_keywords` | array | | Keywords to block in subject/body |
+
+### Recipient Patterns
+
+Allowlist and known recipients support two patterns:
+
+| Pattern | Example | Matches |
+|---------|---------|---------|
+| Domain | `@company.com` | Any email ending in `@company.com` |
+| Exact | `specific@example.com` | Only that exact address |
+
+```yaml
+smtp:
+  allowed_recipients:
+    - "@company.com"  # Allow any @company.com address
+    - "partner@external.com"  # Allow this specific address
+  known_recipients:
+    - "@internal.com"  # No approval needed for internal
+```
+
+### Content Filtering
+
+Block emails containing specific keywords in subject or body:
+
+```yaml
+smtp:
+  blocked_keywords:
+    - "password"
+    - "secret"
+    - "confidential"
+```
+
+Keywords are case-insensitive. Any match will reject the email with HTTP 403.
 
 ## Security Recommendations
 

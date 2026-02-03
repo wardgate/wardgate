@@ -47,7 +47,7 @@ flowchart LR
 
 - *Credential Isolation* - Agents never see your API keys, OAuth tokens, or passwords
 - *Access Control* - Define what each agent can do: read-only calendar, no email deletion, ask before sending
-- *Protocol Adapters* - HTTP/REST passthrough, IMAP with REST wrapper (more coming)
+- *Protocol Adapters* - HTTP/REST passthrough, IMAP and SMTP with REST wrappers
 - *Audit Logging* - Every request logged (metadata only, not content) - know exactly what your agents did
 - *Approval Workflows* - Require human approval for sensitive operations (send email, delete data)
 - *Anomaly Detection* - Alert on unusual patterns (suddenly fetching 100 emails, or a specific folder, or things from the past?)
@@ -267,6 +267,54 @@ REST endpoints exposed:
 - `GET /folders/{folder}/messages/{uid}` - Get full message by UID
 - `POST /folders/{folder}/messages/{uid}/mark-read` - Mark message as read
 - `POST /folders/{folder}/messages/{uid}/move?to=X` - Move message to folder
+
+## SMTP Support
+
+Wardgate can send emails via SMTP through a REST API, with approval workflows and content filtering:
+
+```yaml
+endpoints:
+  smtp-personal:
+    adapter: smtp
+    upstream: smtps://smtp.gmail.com:465  # Or smtp://...587 for STARTTLS
+    auth:
+      type: plain
+      credential_env: SMTP_CREDS  # format: username:password
+    smtp:
+      tls: true
+      from: "your-email@gmail.com"
+      known_recipients:
+        - "@company.com"  # Known domain (no approval needed)
+      ask_new_recipients: true  # Ask before sending to unknown recipients
+      blocked_keywords:
+        - "password"
+        - "secret"
+    rules:
+      - match: { path: "/send" }
+        action: allow
+```
+
+REST endpoint exposed:
+- `POST /send` - Send an email
+
+**Send request body:**
+```json
+{
+  "to": ["recipient@example.com"],
+  "cc": ["cc@example.com"],
+  "bcc": ["bcc@example.com"],
+  "reply_to": "reply@example.com",
+  "subject": "Email subject",
+  "body": "Plain text body",
+  "html_body": "<html>...</html>"
+}
+```
+
+**SMTP Features:**
+- *Content filtering* - Block emails containing specific keywords
+- *Recipient allowlisting* - Only allow sending to approved recipients
+- *Ask for new recipients* - Require human approval when sending to unknown recipients
+- *HTML and plain text* - Support for multipart emails
 
 ## Building
 

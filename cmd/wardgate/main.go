@@ -19,6 +19,7 @@ import (
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
 	"github.com/wardgate/wardgate/internal/proxy"
+	"github.com/wardgate/wardgate/internal/smtp"
 )
 
 func main() {
@@ -104,6 +105,32 @@ func main() {
 			})
 			h = auditMiddleware(auditLog, name, imapHandler)
 			log.Printf("Registered IMAP endpoint: /%s/ -> %s:%d", name, connCfg.Host, connCfg.Port)
+
+		case "smtp":
+			// Parse SMTP connection details from upstream URL
+			smtpConnCfg, err := parseSMTPUpstream(endpoint, vault)
+			if err != nil {
+				log.Fatalf("Failed to parse SMTP config for %s: %v", name, err)
+			}
+
+			smtpClient := smtp.NewSMTPClient(smtpConnCfg)
+			smtpHandlerCfg := smtp.HandlerConfig{
+				EndpointName: name,
+				From:         smtpConnCfg.From,
+			}
+			if endpoint.SMTP != nil {
+				smtpHandlerCfg.AllowedRecipients = endpoint.SMTP.AllowedRecipients
+				smtpHandlerCfg.KnownRecipients = endpoint.SMTP.KnownRecipients
+				smtpHandlerCfg.AskNewRecipients = endpoint.SMTP.AskNewRecipients
+				smtpHandlerCfg.BlockedKeywords = endpoint.SMTP.BlockedKeywords
+			}
+
+			smtpHandler := smtp.NewHandler(smtpClient, engine, smtpHandlerCfg)
+			if approvalMgr != nil {
+				smtpHandler.SetApprovalManager(approvalMgr)
+			}
+			h = auditMiddleware(auditLog, name, smtpHandler)
+			log.Printf("Registered SMTP endpoint: /%s/ -> %s:%d", name, smtpConnCfg.Host, smtpConnCfg.Port)
 
 		default: // "http" or unspecified
 			p := proxy.NewWithName(name, endpoint, vault, engine)
@@ -245,5 +272,72 @@ func parseIMAPUpstream(endpoint config.Endpoint, vault auth.Vault) (imap.Connect
 		Password:           password,
 		TLS:                tls,
 		InsecureSkipVerify: insecureSkipVerify,
+	}, nil
+}
+
+// parseSMTPUpstream parses SMTP connection config from endpoint settings.
+// Upstream format: smtps://smtp.example.com:465 or smtp://smtp.example.com:587
+func parseSMTPUpstream(endpoint config.Endpoint, vault auth.Vault) (smtp.ConnectionConfig, error) {
+	u, err := url.Parse(endpoint.Upstream)
+	if err != nil {
+		return smtp.ConnectionConfig{}, err
+	}
+
+	host := u.Hostname()
+	port := 587 // Default SMTP submission port
+	useTLS := false
+	useStartTLS := true
+
+	if u.Scheme == "smtps" {
+		port = 465
+		useTLS = true
+		useStartTLS = false
+	}
+
+	if u.Port() != "" {
+		if p, err := strconv.Atoi(u.Port()); err == nil {
+			port = p
+		}
+	}
+
+	// Override TLS settings from config if specified
+	from := ""
+	insecureSkipVerify := false
+	if endpoint.SMTP != nil {
+		if endpoint.SMTP.TLS {
+			useTLS = true
+			useStartTLS = false
+		}
+		if endpoint.SMTP.StartTLS {
+			useTLS = false
+			useStartTLS = true
+		}
+		from = endpoint.SMTP.From
+		insecureSkipVerify = endpoint.SMTP.InsecureSkipVerify
+	}
+
+	// Get credentials
+	cred, err := vault.Get(endpoint.Auth.CredentialEnv)
+	if err != nil {
+		return smtp.ConnectionConfig{}, err
+	}
+
+	// Parse username:password from credential
+	username := ""
+	password := cred
+	if idx := strings.Index(cred, ":"); idx > 0 {
+		username = cred[:idx]
+		password = cred[idx+1:]
+	}
+
+	return smtp.ConnectionConfig{
+		Host:               host,
+		Port:               port,
+		Username:           username,
+		Password:           password,
+		TLS:                useTLS,
+		StartTLS:           useStartTLS,
+		InsecureSkipVerify: insecureSkipVerify,
+		From:               from,
 	}, nil
 }

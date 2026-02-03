@@ -48,11 +48,12 @@ type AgentConfig struct {
 
 // Endpoint defines a proxied service.
 type Endpoint struct {
-	Adapter  string     `yaml:"adapter,omitempty"` // "http" (default) or "imap"
-	Upstream string     `yaml:"upstream"`
-	Auth     AuthConfig `yaml:"auth"`
-	Rules    []Rule     `yaml:"rules"`
+	Adapter  string      `yaml:"adapter,omitempty"` // "http" (default), "imap", or "smtp"
+	Upstream string      `yaml:"upstream"`
+	Auth     AuthConfig  `yaml:"auth"`
+	Rules    []Rule      `yaml:"rules"`
 	IMAP     *IMAPConfig `yaml:"imap,omitempty"` // IMAP-specific settings
+	SMTP     *SMTPConfig `yaml:"smtp,omitempty"` // SMTP-specific settings
 }
 
 // IMAPConfig holds IMAP-specific settings.
@@ -61,6 +62,18 @@ type IMAPConfig struct {
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify,omitempty"` // Skip TLS cert verification (for ProtonBridge)
 	MaxConns           int  `yaml:"max_conns,omitempty"`            // Max connections per endpoint
 	IdleTimeoutSecs    int  `yaml:"idle_timeout_secs,omitempty"`    // Idle connection timeout
+}
+
+// SMTPConfig holds SMTP-specific settings.
+type SMTPConfig struct {
+	TLS                bool     `yaml:"tls"`                            // Use implicit TLS (port 465)
+	StartTLS           bool     `yaml:"starttls,omitempty"`             // Use STARTTLS (port 587)
+	InsecureSkipVerify bool     `yaml:"insecure_skip_verify,omitempty"` // Skip TLS cert verification (for self-signed)
+	From               string   `yaml:"from,omitempty"`                 // Default from address
+	AllowedRecipients  []string `yaml:"allowed_recipients,omitempty"`   // Allowlist of recipients (email or @domain)
+	KnownRecipients    []string `yaml:"known_recipients,omitempty"`     // Known recipients that don't need approval
+	AskNewRecipients   bool     `yaml:"ask_new_recipients,omitempty"`   // Ask before sending to new recipients
+	BlockedKeywords    []string `yaml:"blocked_keywords,omitempty"`     // Keywords to block in subject/body
 }
 
 // AuthConfig defines how to authenticate to the upstream.
