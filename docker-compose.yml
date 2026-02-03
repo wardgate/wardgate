@@ -1,0 +1,39 @@
+services:
+  wardgate:
+    build: .
+    container_name: wardgate
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config:ro
+    env_file:
+      - ./config/.env
+    expose:
+      - "8080"
+    networks:
+      - wardgate-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: wardgate-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    networks:
+      - wardgate-net
+    depends_on:
+      - wardgate
+
+networks:
+  wardgate-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

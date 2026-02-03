@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# Config (mounted at runtime)
+.env
+config.yaml
+config/
+
+# Documentation
+docs/
+README.md
+LICENSE
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+wardgate
+*.exe

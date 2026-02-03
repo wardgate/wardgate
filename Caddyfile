@@ -1,0 +1,33 @@
+# Caddyfile for Wardgate
+#
+# Replace {$DOMAIN} with your domain (e.g., wardgate.example.com)
+# or set DOMAIN environment variable.
+#
+# Usage:
+#   DOMAIN=wardgate.example.com docker compose up -d
+
+{$DOMAIN:localhost} {
+	# Reverse proxy to Wardgate
+	reverse_proxy wardgate:8080
+
+	# Enable compression
+	encode gzip
+
+	# Security headers
+	header {
+		# Prevent clickjacking
+		X-Frame-Options "DENY"
+		# Prevent MIME type sniffing
+		X-Content-Type-Options "nosniff"
+		# Enable XSS filter
+		X-XSS-Protection "1; mode=block"
+		# Referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Logging
+	log {
+		output stdout
+		format json
+	}
+}

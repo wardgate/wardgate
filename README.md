@@ -144,6 +144,7 @@ The gateway:
 - [Security Architecture](docs/architecture.md) - How Wardgate protects your credentials
 - [Policy System](docs/policies.md) - Writing and configuring rules
 - [Configuration Reference](docs/config.md) - All configuration options
+- [Deployment Guide](docs/deployment.md) - Docker, Caddy, and production setup
 
 ## Configuration
 
@@ -321,6 +322,25 @@ REST endpoint exposed:
 ```bash
 go build -o wardgate ./cmd/wardgate
 ```
+
+## Docker Deployment
+
+```bash
+# Create config directory and copy files
+mkdir -p config
+cp config.yaml.example config/config.yaml
+cp .env.example config/.env
+
+# Edit config/config.yaml and config/.env with your settings
+
+# Run with Docker Compose (includes Caddy for HTTPS)
+docker compose up -d
+
+# Or for production with a custom domain
+DOMAIN=wardgate.example.com docker compose up -d
+```
+
+See [Deployment Guide](docs/deployment.md) for more options.
 
 ## Testing
 
