@@ -2,3 +2,7 @@
 config.yaml
 /wardgate
 /config/
+
+# Zensical
+/site/
+.venv
