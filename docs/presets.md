@@ -188,7 +188,7 @@ endpoints:
       delete_monitors: deny
 ```
 
-**Get your token:** [PingPing Account → API](https://pingping.io/account)
+**Get your token:** [PingPing Account → API](https://pingping.io/account/settings)
 
 ---
 
