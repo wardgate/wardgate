@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/wardgate-banner.png" alt="Wardgate Banner" width="800">
+</p>
+
 # Wardgate - AI Agent Security Gateway
 
 *Wardgate* is a security proxy that sits between AI agents and external services, providing credential isolation, access control, and audit logging.
