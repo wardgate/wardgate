@@ -116,9 +116,11 @@ Map of endpoint names to their configuration.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `adapter` | string | No | Adapter type: `http` (default) or `imap` |
 | `upstream` | string | Yes | URL of the upstream service |
 | `auth` | object | Yes | Authentication configuration |
 | `rules` | array | No | Policy rules (default: deny all) |
+| `imap` | object | No | IMAP-specific settings (for `adapter: imap`) |
 
 ```yaml
 endpoints:
@@ -151,6 +153,7 @@ auth:
 
 Currently supported types:
 - `bearer` - Adds `Authorization: Bearer <credential>` header
+- `plain` - For IMAP: credential format is `username:password`
 
 ### endpoints.rules
 
@@ -287,7 +290,6 @@ Credentials are stored in environment variables for security.
 
 ```bash
 # Agent keys
-WARDGATE_AGENT_KEY=<agent-secret>
 WARDGATE_AGENT_<NAME>_KEY=<agent-secret>
 
 # Upstream credentials
@@ -298,8 +300,7 @@ WARDGATE_CRED_<NAME>=<credential>
 
 ```bash
 # Agent authentication keys
-WARDGATE_AGENT_KEY=sk-agent-abc123def456
-WARDGATE_AGENT_CODING_KEY=sk-coding-xyz789
+WARDGATE_AGENT_GEORGE_KEY=sk-agent-xyz789
 
 # Upstream API credentials
 WARDGATE_CRED_TODOIST_API_KEY=0123456789abcdef
@@ -396,6 +397,62 @@ Wardgate validates configuration on startup:
 - Rate limit `window` must be valid duration
 
 Invalid configuration causes startup failure with descriptive error.
+
+## IMAP Endpoints
+
+For IMAP endpoints, Wardgate exposes a REST API that wraps the IMAP protocol:
+
+```yaml
+endpoints:
+  imap-personal:
+    adapter: imap
+    upstream: imaps://imap.gmail.com:993
+    auth:
+      type: plain
+      credential_env: IMAP_CREDS  # format: username:password
+    imap:
+      tls: true  # Use TLS (default for imaps://) for ProtonBridge use false for StartTLS
+      insecure_skip_verify: true  # Skip TLS cert verification for ProtonBridge
+    rules:
+      - match: { path: "/inbox*" }
+        action: allow
+      - match: { path: "/folders" }
+        action: allow
+      - match: { path: "/*" }
+        action: deny
+```
+
+### IMAP REST API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/folders` | GET | List all mailbox folders |
+| `/folders/{folder}` | GET | Fetch messages from folder |
+| `/folders/{folder}?limit=N` | GET | Limit number of messages |
+| `/folders/{folder}?since=YYYY-MM-DD` | GET | Messages since date |
+| `/folders/{folder}?before=YYYY-MM-DD` | GET | Messages before date |
+| `/folders/{folder}/messages/{uid}` | GET | Get full message by UID |
+| `/folders/{folder}/messages/{uid}/mark-read` | POST | Mark message as read |
+| `/folders/{folder}/messages/{uid}/move?to=X` | POST | Move message to folder |
+
+Message operations are scoped to folders, so policy rules like `/folders/inbox*` will apply to both listing and reading messages from that folder.
+
+### IMAP Upstream URL
+
+| Scheme | Port | TLS |
+|--------|------|-----|
+| `imaps://` | 993 | Yes |
+| `imap://` | 143 | No |
+
+### endpoints.imap
+
+IMAP-specific configuration.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tls` | bool | true | Use TLS connection |
+| `max_conns` | int | 5 | Max connections per endpoint |
+| `idle_timeout_secs` | int | 300 | Idle connection timeout |
 
 ## Security Recommendations
 

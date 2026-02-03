@@ -59,3 +59,34 @@ endpoints:
           method: "*"
         action: deny
         message: "Operation not permitted"
+
+   imap-personal:
+     adapter: imap
+     upstream: imaps://imap.gmail.com:993
+     auth:
+       type: plain
+       credential_env: WARDGATE_CRED_IMAP  # format: user@gmail.com:app-password
+     imap:
+       tls: true  # For ProtonBridge use no for StartTLS
+     rules:
+       # Allow listing folders
+       - match:
+           path: "/folders"
+         action: allow
+       # Allow reading inbox
+       - match:
+           path: "/folders/inbox*"
+         action: allow
+       # Allow fetching individual messages
+       - match:
+           method: GET
+           path: "/message/*"
+         action: allow
+       # Require approval for modifications
+       - match:
+           method: POST
+         action: ask
+       # Deny everything else
+       - match:
+           path: "/*"
+         action: deny

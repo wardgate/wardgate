@@ -4,7 +4,10 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -12,6 +15,7 @@ import (
 	"github.com/wardgate/wardgate/internal/audit"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/imap"
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
 	"github.com/wardgate/wardgate/internal/proxy"
@@ -68,17 +72,49 @@ func main() {
 	// Create mux for API endpoints (requires agent auth)
 	apiMux := http.NewServeMux()
 
+	// Create shared IMAP pool for IMAP endpoints
+	imapDialer := imap.NewIMAPDialer()
+	imapPool := imap.NewPool(imapDialer, imap.PoolConfig{
+		MaxConnsPerEndpoint: 5,
+		IdleTimeout:         5 * time.Minute,
+	})
+
 	// Register endpoint proxies
 	for name, endpoint := range cfg.Endpoints {
 		engine := policy.New(endpoint.Rules)
-		p := proxy.NewWithName(name, endpoint, vault, engine)
-		if approvalMgr != nil {
-			p.SetApprovalManager(approvalMgr)
+
+		var h http.Handler
+
+		adapter := strings.ToLower(endpoint.Adapter)
+		if adapter == "" {
+			adapter = "http"
 		}
 
-		h := auditMiddleware(auditLog, name, p)
+		switch adapter {
+		case "imap":
+			// Parse IMAP connection details from upstream URL
+			connCfg, err := parseIMAPUpstream(endpoint, vault)
+			if err != nil {
+				log.Fatalf("Failed to parse IMAP config for %s: %v", name, err)
+			}
+
+			imapHandler := imap.NewHandler(imapPool, engine, imap.HandlerConfig{
+				EndpointName:     name,
+				ConnectionConfig: connCfg,
+			})
+			h = auditMiddleware(auditLog, name, imapHandler)
+			log.Printf("Registered IMAP endpoint: /%s/ -> %s:%d", name, connCfg.Host, connCfg.Port)
+
+		default: // "http" or unspecified
+			p := proxy.NewWithName(name, endpoint, vault, engine)
+			if approvalMgr != nil {
+				p.SetApprovalManager(approvalMgr)
+			}
+			h = auditMiddleware(auditLog, name, p)
+			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, endpoint.Upstream)
+		}
+
 		apiMux.Handle("/"+name+"/", http.StripPrefix("/"+name, h))
-		log.Printf("Registered endpoint: /%s/ -> %s", name, endpoint.Upstream)
 	}
 
 	// Wrap API endpoints with agent authentication
@@ -156,4 +192,58 @@ func decisionFromStatus(status int) string {
 	default:
 		return "error"
 	}
+}
+
+// parseIMAPUpstream parses IMAP connection config from endpoint settings.
+// Upstream format: imaps://imap.example.com:993 or imap://imap.example.com:143
+func parseIMAPUpstream(endpoint config.Endpoint, vault auth.Vault) (imap.ConnectionConfig, error) {
+	u, err := url.Parse(endpoint.Upstream)
+	if err != nil {
+		return imap.ConnectionConfig{}, err
+	}
+
+	host := u.Hostname()
+	port := 993 // Default IMAPS port
+	tls := true
+
+	if u.Scheme == "imap" {
+		port = 143
+		tls = false
+	}
+
+	if u.Port() != "" {
+		if p, err := strconv.Atoi(u.Port()); err == nil {
+			port = p
+		}
+	}
+
+	// Override TLS settings from config if specified
+	insecureSkipVerify := false
+	if endpoint.IMAP != nil {
+		tls = endpoint.IMAP.TLS
+		insecureSkipVerify = endpoint.IMAP.InsecureSkipVerify
+	}
+
+	// Get credentials
+	cred, err := vault.Get(endpoint.Auth.CredentialEnv)
+	if err != nil {
+		return imap.ConnectionConfig{}, err
+	}
+
+	// Parse username:password from credential
+	username := ""
+	password := cred
+	if idx := strings.Index(cred, ":"); idx > 0 {
+		username = cred[:idx]
+		password = cred[idx+1:]
+	}
+
+	return imap.ConnectionConfig{
+		Host:               host,
+		Port:               port,
+		Username:           username,
+		Password:           password,
+		TLS:                tls,
+		InsecureSkipVerify: insecureSkipVerify,
+	}, nil
 }

@@ -48,9 +48,19 @@ type AgentConfig struct {
 
 // Endpoint defines a proxied service.
 type Endpoint struct {
+	Adapter  string     `yaml:"adapter,omitempty"` // "http" (default) or "imap"
 	Upstream string     `yaml:"upstream"`
 	Auth     AuthConfig `yaml:"auth"`
 	Rules    []Rule     `yaml:"rules"`
+	IMAP     *IMAPConfig `yaml:"imap,omitempty"` // IMAP-specific settings
+}
+
+// IMAPConfig holds IMAP-specific settings.
+type IMAPConfig struct {
+	TLS                bool `yaml:"tls"`
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify,omitempty"` // Skip TLS cert verification (for ProtonBridge)
+	MaxConns           int  `yaml:"max_conns,omitempty"`            // Max connections per endpoint
+	IdleTimeoutSecs    int  `yaml:"idle_timeout_secs,omitempty"`    // Idle connection timeout
 }
 
 // AuthConfig defines how to authenticate to the upstream.

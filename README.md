@@ -36,6 +36,7 @@ flowchart LR
 
 - *Credential Isolation* - Agents never see your API keys, OAuth tokens, or passwords
 - *Access Control* - Define what each agent can do: read-only calendar, no email deletion, ask before sending
+- *Protocol Adapters* - HTTP/REST passthrough, IMAP with REST wrapper (more coming)
 - *Audit Logging* - Every request logged (metadata only, not content) - know exactly what your agents did
 - *Approval Workflows* - Require human approval for sensitive operations (send email, delete data)
 - *Anomaly Detection* - Alert on unusual patterns (suddenly fetching 100 emails, or a specific folder, or things from the past?)
@@ -229,6 +230,32 @@ When an `ask` rule matches:
 2. Notification sent to Slack/webhook with approve/deny links
 3. Human clicks approve or deny
 4. Request proceeds or returns 403
+
+## IMAP Support
+
+Wardgate can proxy IMAP servers via a REST API, letting your agents read email without direct IMAP access:
+
+```yaml
+endpoints:
+  imap-personal:
+    adapter: imap
+    upstream: imaps://imap.gmail.com:993
+    auth:
+      type: plain
+      credential_env: IMAP_CREDS  # format: username:password
+    rules:
+      - match: { path: "/inbox*" }
+        action: allow
+      - match: { path: "/*" }
+        action: deny
+```
+
+REST endpoints exposed:
+- `GET /folders` - List mailbox folders
+- `GET /folders/{folder}?limit=N&since=DATE` - Fetch messages from folder
+- `GET /folders/{folder}/messages/{uid}` - Get full message by UID
+- `POST /folders/{folder}/messages/{uid}/mark-read` - Mark message as read
+- `POST /folders/{folder}/messages/{uid}/move?to=X` - Move message to folder
 
 ## Building
 
