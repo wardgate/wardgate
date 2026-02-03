@@ -265,6 +265,31 @@ func TestHandler_ConnectionError(t *testing.T) {
 	}
 }
 
+func TestHandler_FolderWithSlash(t *testing.T) {
+	handler, pool := newTestHandler()
+	pool.conn = &mockConn{
+		messages: []Message{
+			{UID: 1, Subject: "Order confirmation", From: "shop@example.com", Date: time.Now()},
+		},
+	}
+
+	// URL-encoded "Folder/Orders" -> "Folder%2FOrders"
+	req := httptest.NewRequest("GET", "/folders/Folder%2FOrders", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the correct folder was passed to FetchMessages
+	mc := pool.conn.(*mockConn)
+	if mc.lastOpts.Folder != "Folder/Orders" {
+		t.Errorf("expected folder 'Folder/Orders', got '%s'", mc.lastOpts.Folder)
+	}
+}
+
 // Mock pool for handler tests
 type mockPool struct {
 	conn    Connection

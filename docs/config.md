@@ -437,6 +437,32 @@ endpoints:
 
 Message operations are scoped to folders, so policy rules like `/folders/inbox*` will apply to both listing and reading messages from that folder.
 
+### Folder Names with Slashes
+
+IMAP folder names can contain slashes (e.g., `Folder/Orders`). URL-encode them in requests:
+
+| Folder Name | URL Request |
+|-------------|-------------|
+| `INBOX` | `/folders/INBOX` |
+| `Folder/Orders` | `/folders/Folder%2FOrders` |
+| `Work/Projects/Active` | `/folders/Work%2FProjects%2FActive` |
+
+The `%2F` is the URL-encoded form of `/`.
+
+**Important:** Policy rules use the *decoded* path, not the encoded form:
+
+```yaml
+# Correct - use decoded folder name
+- match:
+    path: "/folders/Folder/Orders*"
+  action: allow
+
+# Wrong - don't use URL encoding in rules
+- match:
+    path: "/folders/Folder%2FOrders*"
+  action: allow
+```
+
 ### IMAP Upstream URL
 
 | Scheme | Port | TLS |

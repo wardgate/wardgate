@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -81,21 +82,55 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 
+	// Find "messages" index if present
+	messagesIdx := -1
+	for i, p := range parts {
+		if p == "messages" {
+			messagesIdx = i
+			break
+		}
+	}
+
 	switch {
 	case path == "folders" && r.Method == "GET":
 		h.handleListFolders(w, r, conn)
-	case len(parts) == 2 && parts[0] == "folders" && r.Method == "GET":
-		// /folders/{folder} - fetch messages from folder
-		h.handleFetchMessages(w, r, conn, parts[1])
-	case len(parts) == 4 && parts[0] == "folders" && parts[2] == "messages" && r.Method == "GET":
+
+	case len(parts) >= 2 && parts[0] == "folders" && messagesIdx == -1 && r.Method == "GET":
+		// /folders/{folder} - no "messages" in path, so it's listing folder contents
+		folder := decodeFolder(strings.Join(parts[1:], "/"))
+		if folder == "" {
+			http.Error(w, "invalid folder name", http.StatusBadRequest)
+			return
+		}
+		h.handleFetchMessages(w, r, conn, folder)
+
+	case parts[0] == "folders" && messagesIdx > 1 && len(parts) == messagesIdx+2 && r.Method == "GET":
 		// /folders/{folder}/messages/{uid}
-		h.handleGetMessage(w, r, conn, parts[1], parts[3])
-	case len(parts) == 5 && parts[0] == "folders" && parts[2] == "messages" && parts[4] == "mark-read" && r.Method == "POST":
+		folder := decodeFolder(strings.Join(parts[1:messagesIdx], "/"))
+		if folder == "" {
+			http.Error(w, "invalid folder name", http.StatusBadRequest)
+			return
+		}
+		h.handleGetMessage(w, r, conn, folder, parts[messagesIdx+1])
+
+	case parts[0] == "folders" && messagesIdx > 1 && len(parts) == messagesIdx+3 && parts[len(parts)-1] == "mark-read" && r.Method == "POST":
 		// /folders/{folder}/messages/{uid}/mark-read
-		h.handleMarkRead(w, r, conn, parts[1], parts[3])
-	case len(parts) == 5 && parts[0] == "folders" && parts[2] == "messages" && parts[4] == "move" && r.Method == "POST":
+		folder := decodeFolder(strings.Join(parts[1:messagesIdx], "/"))
+		if folder == "" {
+			http.Error(w, "invalid folder name", http.StatusBadRequest)
+			return
+		}
+		h.handleMarkRead(w, r, conn, folder, parts[messagesIdx+1])
+
+	case parts[0] == "folders" && messagesIdx > 1 && len(parts) == messagesIdx+3 && parts[len(parts)-1] == "move" && r.Method == "POST":
 		// /folders/{folder}/messages/{uid}/move?to={dest}
-		h.handleMoveMessage(w, r, conn, parts[1], parts[3])
+		folder := decodeFolder(strings.Join(parts[1:messagesIdx], "/"))
+		if folder == "" {
+			http.Error(w, "invalid folder name", http.StatusBadRequest)
+			return
+		}
+		h.handleMoveMessage(w, r, conn, folder, parts[messagesIdx+1])
+
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
@@ -151,12 +186,14 @@ func (h *Handler) handleGetMessage(w http.ResponseWriter, r *http.Request, conn 
 
 	// Select folder first to ensure UID is from this folder
 	if _, err := conn.SelectFolder(r.Context(), folder); err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP SelectFolder error for '%s': %v\n", folder, err)
 		http.Error(w, "failed to select folder", http.StatusInternalServerError)
 		return
 	}
 
 	msg, err := conn.GetMessage(r.Context(), uint32(uid))
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP GetMessage error for UID %d in '%s': %v\n", uid, folder, err)
 		http.Error(w, "failed to get message", http.StatusInternalServerError)
 		return
 	}
@@ -172,11 +209,13 @@ func (h *Handler) handleMarkRead(w http.ResponseWriter, r *http.Request, conn Co
 
 	// Select folder first to ensure UID is from this folder
 	if _, err := conn.SelectFolder(r.Context(), folder); err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP SelectFolder error for '%s': %v\n", folder, err)
 		http.Error(w, "failed to select folder", http.StatusInternalServerError)
 		return
 	}
 
 	if err := conn.MarkRead(r.Context(), uint32(uid)); err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP MarkRead error for UID %d: %v\n", uid, err)
 		http.Error(w, "failed to mark message as read", http.StatusInternalServerError)
 		return
 	}
@@ -200,11 +239,13 @@ func (h *Handler) handleMoveMessage(w http.ResponseWriter, r *http.Request, conn
 
 	// Select source folder first to ensure UID is from this folder
 	if _, err := conn.SelectFolder(r.Context(), folder); err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP SelectFolder error for '%s': %v\n", folder, err)
 		http.Error(w, "failed to select folder", http.StatusInternalServerError)
 		return
 	}
 
 	if err := conn.MoveMessage(r.Context(), uint32(uid), destFolder); err != nil {
+		fmt.Fprintf(os.Stderr, "IMAP MoveMessage error for UID %d to '%s': %v\n", uid, destFolder, err)
 		http.Error(w, "failed to move message", http.StatusInternalServerError)
 		return
 	}
@@ -216,4 +257,13 @@ func (h *Handler) handleMoveMessage(w http.ResponseWriter, r *http.Request, conn
 func (h *Handler) writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
+}
+
+// decodeFolder URL-decodes a folder name. Returns empty string on error.
+func decodeFolder(encoded string) string {
+	decoded, err := url.PathUnescape(encoded)
+	if err != nil {
+		return ""
+	}
+	return decoded
 }
