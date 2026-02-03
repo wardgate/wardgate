@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/policy"
@@ -15,11 +16,13 @@ import (
 
 // Proxy handles HTTP requests to an endpoint.
 type Proxy struct {
-	endpoint config.Endpoint
-	vault    auth.Vault
-	engine   *policy.Engine
-	upstream *url.URL
-	timeout  time.Duration
+	endpoint     config.Endpoint
+	endpointName string
+	vault        auth.Vault
+	engine       *policy.Engine
+	upstream     *url.URL
+	timeout      time.Duration
+	approvals    *approval.Manager
 }
 
 // New creates a new proxy for the given endpoint.
@@ -34,6 +37,18 @@ func New(endpoint config.Endpoint, vault auth.Vault, engine *policy.Engine) *Pro
 	}
 }
 
+// NewWithName creates a new proxy with an endpoint name for approval messages.
+func NewWithName(name string, endpoint config.Endpoint, vault auth.Vault, engine *policy.Engine) *Proxy {
+	p := New(endpoint, vault, engine)
+	p.endpointName = name
+	return p
+}
+
+// SetApprovalManager sets the approval manager for ask workflows.
+func (p *Proxy) SetApprovalManager(m *approval.Manager) {
+	p.approvals = m
+}
+
 // SetTimeout sets the upstream request timeout.
 func (p *Proxy) SetTimeout(d time.Duration) {
 	p.timeout = d
@@ -41,11 +56,38 @@ func (p *Proxy) SetTimeout(d time.Duration) {
 
 // ServeHTTP handles incoming requests.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Evaluate policy
-	decision := p.engine.Evaluate(r.Method, r.URL.Path)
+	// Get rate limit key from context or header
+	agentID := r.Header.Get("X-Agent-ID")
+	if agentID == "" {
+		agentID = r.RemoteAddr
+	}
+
+	// Evaluate policy with rate limit key
+	decision := p.engine.EvaluateWithKey(r.Method, r.URL.Path, agentID)
 	if decision.Action == policy.Deny {
 		http.Error(w, decision.Message, http.StatusForbidden)
 		return
+	}
+	if decision.Action == policy.RateLimited {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, decision.Message, http.StatusTooManyRequests)
+		return
+	}
+	if decision.Action == policy.Ask {
+		if p.approvals == nil {
+			http.Error(w, "ask action requires approval manager configuration", http.StatusServiceUnavailable)
+			return
+		}
+		approved, err := p.approvals.RequestApproval(r.Context(), p.endpointName, r.Method, r.URL.Path, agentID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("approval failed: %v", err), http.StatusForbidden)
+			return
+		}
+		if !approved {
+			http.Error(w, "request denied by approver", http.StatusForbidden)
+			return
+		}
+		// Approved - continue to proxy
 	}
 
 	// Get credential

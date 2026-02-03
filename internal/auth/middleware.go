@@ -43,10 +43,14 @@ func (m *AgentAuthMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if _, ok := m.validKeys[token]; !ok {
+	agentID, ok := m.validKeys[token]
+	if !ok {
 		http.Error(w, "invalid agent key", http.StatusUnauthorized)
 		return
 	}
+
+	// Set agent ID for downstream handlers (rate limiting, audit, approvals)
+	r.Header.Set("X-Agent-ID", agentID)
 
 	m.next.ServeHTTP(w, r)
 }

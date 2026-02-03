@@ -1,9 +1,22 @@
 server:
   listen: ":8080"
+  approval_url: "http://localhost:8080"  # Base URL for approval links
 
 agents:
   - id: agent-name
     key_env: WARDGATE_AGENT_KEY
+
+# Notification settings for "ask" workflow
+notify:
+  timeout: "5m"  # How long to wait for approval
+  # Slack webhook (optional)
+  # slack:
+  #   webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  # Generic webhook (optional)
+  # webhook:
+  #   url: "https://your-webhook.example.com/notify"
+  #   headers:
+  #     Authorization: "Bearer your-token"
 
 endpoints:
   todoist-api:
@@ -12,17 +25,36 @@ endpoints:
       type: bearer
       credential_env: WARDGATE_CRED_TODOIST_API_KEY
     rules:
+      # Allow GET with rate limiting
       - match:
           method: GET
         action: allow
+        rate_limit:
+          max: 100
+          window: "1m"
+
+      # Allow creating tasks
       - match:
           method: POST
           path: "/tasks"
         action: allow
+
+      # Allow closing tasks (glob pattern)
       - match:
           method: POST
           path: "/tasks/*/close"
         action: allow
+
+      # Require approval for updates (only during business hours)
+      - match:
+          method: PUT
+          path: "/tasks/*"
+        action: ask
+        time_range:
+          hours: ["09:00-18:00"]
+          days: ["mon", "tue", "wed", "thu", "fri"]
+
+      # Deny all other operations
       - match:
           method: "*"
         action: deny

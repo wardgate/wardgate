@@ -10,14 +10,34 @@ import (
 
 // Config is the root configuration structure.
 type Config struct {
-	Server    ServerConfig          `yaml:"server"`
-	Agents    []AgentConfig         `yaml:"agents"`
-	Endpoints map[string]Endpoint   `yaml:"endpoints"`
+	Server    ServerConfig        `yaml:"server"`
+	Agents    []AgentConfig       `yaml:"agents"`
+	Endpoints map[string]Endpoint `yaml:"endpoints"`
+	Notify    NotifyConfig        `yaml:"notify,omitempty"`
 }
 
 // ServerConfig holds server settings.
 type ServerConfig struct {
-	Listen string `yaml:"listen"`
+	Listen      string `yaml:"listen"`
+	ApprovalURL string `yaml:"approval_url,omitempty"` // Base URL for approval links
+}
+
+// NotifyConfig holds notification settings.
+type NotifyConfig struct {
+	Webhook *WebhookNotifyConfig `yaml:"webhook,omitempty"`
+	Slack   *SlackNotifyConfig   `yaml:"slack,omitempty"`
+	Timeout string               `yaml:"timeout,omitempty"` // Approval timeout (e.g., "5m")
+}
+
+// WebhookNotifyConfig configures a generic webhook notifier.
+type WebhookNotifyConfig struct {
+	URL     string            `yaml:"url"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+}
+
+// SlackNotifyConfig configures Slack notifications.
+type SlackNotifyConfig struct {
+	WebhookURL string `yaml:"webhook_url"`
 }
 
 // AgentConfig defines an agent that can access the gateway.
@@ -41,15 +61,29 @@ type AuthConfig struct {
 
 // Rule defines a policy rule for an endpoint.
 type Rule struct {
-	Match   Match  `yaml:"match"`
-	Action  string `yaml:"action"`
-	Message string `yaml:"message,omitempty"`
+	Match     Match      `yaml:"match"`
+	Action    string     `yaml:"action"`
+	Message   string     `yaml:"message,omitempty"`
+	RateLimit *RateLimit `yaml:"rate_limit,omitempty"`
+	TimeRange *TimeRange `yaml:"time_range,omitempty"`
 }
 
 // Match defines the conditions for a rule to apply.
 type Match struct {
 	Method string `yaml:"method,omitempty"`
 	Path   string `yaml:"path,omitempty"`
+}
+
+// RateLimit defines rate limiting for a rule.
+type RateLimit struct {
+	Max    int    `yaml:"max"`              // Maximum requests
+	Window string `yaml:"window,omitempty"` // Time window (e.g., "1m", "1h")
+}
+
+// TimeRange defines when a rule is active.
+type TimeRange struct {
+	Hours []string `yaml:"hours,omitempty"` // e.g., ["09:00-17:00"]
+	Days  []string `yaml:"days,omitempty"`  // e.g., ["mon", "tue", "wed", "thu", "fri"]
 }
 
 // validActions are the allowed action types.

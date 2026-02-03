@@ -2,7 +2,7 @@
 
 *Wardgate* is a security proxy that sits between AI agents and external services, providing credential isolation, access control, and audit logging.
 
-Give your AI agents API access — without giving them your credentials.
+Give your AI agents API access - without giving them your credentials.
 
 ## The Problem
 
@@ -19,7 +19,7 @@ Do you really want to give your API keys or e-mail access to that? Give an AI ag
 *The risk is real:*
 - Credentials in prompts can leak through model outputs, logs, or attacks
 - Prompt injection can make agents do things you didn't intend
-- A compromised agent has the same access you gave it — to everything
+- A compromised agent has the same access you gave it - to everything
 
 ## The Solution
 
@@ -89,7 +89,7 @@ endpoints:
         action: ask  # Human approval required
 ```
 
-Your agent calls https://wardgate.internal/todoist/tasks — Wardgate injects the real credentials and enforces your rules.
+Your agent calls https://wardgate.internal/todoist/tasks - Wardgate injects the real credentials and enforces your rules.
 
 ## Quick Start
 
@@ -127,13 +127,22 @@ The gateway:
 5. Logs the request/response
 6. Returns the response to the agent
 
+## Documentation
+
+- [Security Architecture](docs/architecture.md) - How Wardgate protects your credentials
+- [Policy System](docs/policies.md) - Writing and configuring rules
+- [Configuration Reference](docs/config.md) - All configuration options
+
 ## Configuration
 
-See `config.yaml.example` for an example. Key sections:
+See `config.yaml.example` for a quick example, or [Configuration Reference](docs/config.md) for full documentation.
 
-- `server.listen` — Address to listen on (default `:8080`)
-- `agents` — List of agents and their key env vars
-- `endpoints` — Map of endpoint name to upstream config and rules
+Key sections:
+
+- `server.listen` - Address to listen on (default `:8080`)
+- `agents` - List of agents and their key env vars
+- `endpoints` - Map of endpoint name to upstream config and rules
+- `notify` - Notification settings for approval workflows
 
 ## Policy Rules
 
@@ -145,12 +154,81 @@ rules:
     action: allow
   - match: { method: POST, path: "/tasks" }
     action: allow
+  - match: { method: POST, path: "/tasks/*/close" }  # Glob pattern
+    action: allow
   - match: { method: "*" }
     action: deny
     message: "Not permitted"
 ```
 
-Supported actions: `allow`, `deny`
+### Supported Actions
+
+| Action | Description |
+|--------|-------------|
+| `allow` | Pass through immediately |
+| `deny` | Block with error message |
+| `ask` | Require human approval (blocks until approved/denied/timeout) |
+
+### Path Patterns
+
+- Exact match: `/tasks` matches only `/tasks`
+- Wildcard suffix: `/tasks*` matches `/tasks`, `/tasks/123`, `/tasks/123/comments`
+- Single segment: `/tasks/*/close` matches `/tasks/123/close` but not `/tasks/a/b/close`
+- Multi-segment: `/api/**/status` matches `/api/status`, `/api/v1/status`, `/api/v1/tasks/status`
+
+### Rate Limiting
+
+Limit requests per agent per time window:
+
+```yaml
+rules:
+  - match: { method: GET }
+    action: allow
+    rate_limit:
+      max: 100        # Maximum requests
+      window: "1m"    # Per minute (supports: s, m, h)
+```
+
+### Time-Based Rules
+
+Restrict when rules apply:
+
+```yaml
+rules:
+  - match: { method: POST }
+    action: allow
+    time_range:
+      hours: ["09:00-17:00"]  # Only during business hours
+      days: ["mon", "tue", "wed", "thu", "fri"]  # Weekdays only
+```
+
+### Ask Workflow (Human Approval)
+
+For sensitive operations, require human approval:
+
+```yaml
+# In endpoint rules
+rules:
+  - match: { method: DELETE }
+    action: ask  # Requires human approval
+
+# Configure notifications
+notify:
+  timeout: "5m"  # How long to wait for approval
+  slack:
+    webhook_url: "https://hooks.slack.com/services/..."
+  # Or use a generic webhook
+  webhook:
+    url: "https://your-webhook.example.com/notify"
+    headers:
+      Authorization: "Bearer token"
+```
+
+When an `ask` rule matches:
+1. Agent request blocks
+2. Notification sent to Slack/webhook with approve/deny links
+3. Human clicks approve or deny
+4. Request proceeds or returns 403
 
 ## Building
 

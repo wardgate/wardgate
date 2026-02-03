@@ -2,8 +2,10 @@ package policy
 
 import (
 	"strings"
+	"time"
 
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/ratelimit"
 )
 
 // Action represents a policy decision.
@@ -14,6 +16,7 @@ const (
 	Deny
 	Ask
 	Queue
+	RateLimited
 )
 
 func (a Action) String() string {
@@ -26,6 +29,8 @@ func (a Action) String() string {
 		return "ask"
 	case Queue:
 		return "queue"
+	case RateLimited:
+		return "rate_limited"
 	default:
 		return "unknown"
 	}
@@ -39,18 +44,51 @@ type Decision struct {
 
 // Engine evaluates policy rules.
 type Engine struct {
-	rules []config.Rule
+	rules      []config.Rule
+	rateLimits map[int]*ratelimit.Registry // per-rule rate limiters
 }
 
 // New creates a new policy engine with the given rules.
 func New(rules []config.Rule) *Engine {
-	return &Engine{rules: rules}
+	e := &Engine{
+		rules:      rules,
+		rateLimits: make(map[int]*ratelimit.Registry),
+	}
+	// Initialize rate limiters for rules that have them
+	for i, rule := range rules {
+		if rule.RateLimit != nil && rule.RateLimit.Max > 0 {
+			window := parseWindow(rule.RateLimit.Window)
+			e.rateLimits[i] = ratelimit.NewRegistry(rule.RateLimit.Max, window)
+		}
+	}
+	return e
 }
 
 // Evaluate checks the request against rules and returns a decision.
+// The key parameter is used for rate limiting (typically agent ID or IP).
 func (e *Engine) Evaluate(method, path string) Decision {
-	for _, rule := range e.rules {
+	return e.EvaluateWithKey(method, path, "default")
+}
+
+// EvaluateWithKey checks rules with a key for rate limiting.
+func (e *Engine) EvaluateWithKey(method, path, key string) Decision {
+	for i, rule := range e.rules {
 		if e.matchRule(rule, method, path) {
+			// Check time range
+			if rule.TimeRange != nil && !e.inTimeRange(rule.TimeRange) {
+				continue // Rule doesn't apply outside time range
+			}
+
+			// Check rate limit
+			if reg, ok := e.rateLimits[i]; ok {
+				if !reg.Allow(key) {
+					return Decision{
+						Action:  RateLimited,
+						Message: "rate limit exceeded",
+					}
+				}
+			}
+
 			return Decision{
 				Action:  parseAction(rule.Action),
 				Message: rule.Message,
@@ -83,13 +121,139 @@ func (e *Engine) matchRule(rule config.Rule, method, path string) bool {
 }
 
 func matchPath(pattern, path string) bool {
-	// Wildcard suffix match (e.g., "/tasks*" matches "/tasks", "/tasks/123")
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(path, prefix)
+	// Handle glob patterns with * in the middle (e.g., "/tasks/*/close")
+	if strings.Contains(pattern, "*") {
+		return matchGlob(pattern, path)
 	}
 	// Exact match
 	return pattern == path
+}
+
+// matchGlob matches a path against a glob pattern.
+// Supports * as a wildcard for a single path segment.
+// Supports ** or trailing * for matching multiple segments.
+func matchGlob(pattern, path string) bool {
+	// Trailing wildcard: "/tasks*" or "/tasks/*"
+	if strings.HasSuffix(pattern, "*") && !strings.HasSuffix(pattern, "**") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		prefix = strings.TrimSuffix(prefix, "/")
+		return strings.HasPrefix(path, prefix)
+	}
+
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+
+	pi := 0 // pattern index
+	for i := 0; i < len(pathParts); i++ {
+		if pi >= len(patternParts) {
+			return false
+		}
+
+		pp := patternParts[pi]
+		if pp == "**" {
+			// ** matches zero or more segments
+			if pi == len(patternParts)-1 {
+				return true // ** at end matches everything
+			}
+			// Try to match remaining pattern
+			for j := i; j <= len(pathParts); j++ {
+				if matchGlob(strings.Join(patternParts[pi+1:], "/"), strings.Join(pathParts[j:], "/")) {
+					return true
+				}
+			}
+			return false
+		} else if pp == "*" {
+			// * matches exactly one segment
+			pi++
+			continue
+		} else if pp != pathParts[i] {
+			return false
+		}
+		pi++
+	}
+
+	return pi == len(patternParts)
+}
+
+func (e *Engine) inTimeRange(tr *config.TimeRange) bool {
+	now := time.Now()
+
+	// Check days
+	if len(tr.Days) > 0 {
+		dayName := strings.ToLower(now.Weekday().String()[:3])
+		found := false
+		for _, d := range tr.Days {
+			if strings.ToLower(d) == dayName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Check hours
+	if len(tr.Hours) > 0 {
+		currentMinutes := now.Hour()*60 + now.Minute()
+		inRange := false
+		for _, h := range tr.Hours {
+			start, end, ok := parseHourRange(h)
+			if ok && currentMinutes >= start && currentMinutes <= end {
+				inRange = true
+				break
+			}
+		}
+		if !inRange {
+			return false
+		}
+	}
+
+	return true
+}
+
+func parseHourRange(s string) (start, end int, ok bool) {
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	start = parseTimeOfDay(parts[0])
+	end = parseTimeOfDay(parts[1])
+	if start < 0 || end < 0 {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+func parseTimeOfDay(s string) int {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	if len(parts) != 2 {
+		return -1
+	}
+	var h, m int
+	if _, err := time.Parse("15", parts[0]); err != nil {
+		return -1
+	}
+	h = int(parts[0][0]-'0')*10 + int(parts[0][1]-'0')
+	if len(parts[0]) == 1 {
+		h = int(parts[0][0] - '0')
+	}
+	if _, err := time.Parse("04", parts[1]); err != nil {
+		return -1
+	}
+	m = int(parts[1][0]-'0')*10 + int(parts[1][1]-'0')
+	return h*60 + m
+}
+
+func parseWindow(s string) time.Duration {
+	if s == "" {
+		return time.Minute // default 1 minute
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return time.Minute
+	}
+	return d
 }
 
 func parseAction(action string) Action {

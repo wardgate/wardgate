@@ -1,0 +1,406 @@
+# Wardgate Configuration Reference
+
+This document describes all configuration options for Wardgate.
+
+## Configuration Files
+
+Wardgate uses two configuration files:
+
+1. **config.yaml** - Main configuration (endpoints, rules, notifications)
+2. **.env** - Credentials and secrets (never commit to version control)
+
+## Quick Start
+
+```bash
+# Create config files from examples
+cp config.yaml.example config.yaml
+cp .env.example .env
+
+# Edit with your settings
+vim config.yaml
+vim .env
+
+# Run Wardgate
+./wardgate -config config.yaml
+```
+
+## Full Configuration Example
+
+```yaml
+# config.yaml
+server:
+  listen: ":8080"
+  approval_url: "https://wardgate.example.com"
+
+agents:
+  - id: my-agent
+    key_env: WARDGATE_AGENT_KEY
+
+notify:
+  timeout: "5m"
+  slack:
+    webhook_url: "https://hooks.slack.com/services/..."
+
+endpoints:
+  todoist-api:
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_TODOIST_API_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+        rate_limit: { max: 100, window: "1m" }
+      - match: { method: POST, path: "/tasks" }
+        action: allow
+      - match: { method: DELETE }
+        action: ask
+      - match: { method: "*" }
+        action: deny
+```
+
+```bash
+# .env
+WARDGATE_AGENT_KEY=agent-secret-key-here
+WARDGATE_CRED_TODOIST_API_KEY=your-todoist-api-key
+```
+
+## Configuration Sections
+
+### server
+
+Server configuration.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `listen` | string | `:8080` | Address and port to listen on |
+| `approval_url` | string | | Base URL for approval links in notifications |
+
+```yaml
+server:
+  listen: ":8080"                              # Listen on all interfaces, port 8080
+  approval_url: "https://wardgate.example.com" # For approval links
+```
+
+#### Listen Address Examples
+
+```yaml
+listen: ":8080"           # All interfaces, port 8080
+listen: "127.0.0.1:8080"  # Localhost only
+listen: "0.0.0.0:443"     # All interfaces, HTTPS port
+```
+
+### agents
+
+List of agents allowed to use the gateway.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Unique identifier for the agent |
+| `key_env` | string | Yes | Environment variable containing the agent's API key |
+
+```yaml
+agents:
+  - id: my-agent
+    key_env: WARDGATE_AGENT_KEY
+  
+  - id: another-agent
+    key_env: WARDGATE_AGENT_2_KEY
+```
+
+Agents authenticate using the `Authorization: Bearer <key>` header.
+
+### endpoints
+
+Map of endpoint names to their configuration.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `upstream` | string | Yes | URL of the upstream service |
+| `auth` | object | Yes | Authentication configuration |
+| `rules` | array | No | Policy rules (default: deny all) |
+
+```yaml
+endpoints:
+  todoist-api:
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_TODOIST_API_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+```
+
+Endpoints are accessed as: `http://wardgate:8080/{endpoint-name}/{path}`
+
+### endpoints.auth
+
+Authentication configuration for the upstream service.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | Authentication type (`bearer`) |
+| `credential_env` | string | Yes | Environment variable containing the credential |
+
+```yaml
+auth:
+  type: bearer
+  credential_env: WARDGATE_CRED_TODOIST_API_KEY
+```
+
+Currently supported types:
+- `bearer` - Adds `Authorization: Bearer <credential>` header
+
+### endpoints.rules
+
+Array of policy rules. See [Policy Documentation](policies.md) for details.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `match` | object | Yes | Conditions to match |
+| `match.method` | string | No | HTTP method to match (`GET`, `POST`, `*`, etc.) |
+| `match.path` | string | No | Path pattern to match |
+| `action` | string | Yes | Action to take (`allow`, `deny`, `ask`) |
+| `message` | string | No | Message to return (for `deny`) |
+| `rate_limit` | object | No | Rate limiting configuration |
+| `time_range` | object | No | Time-based restrictions |
+
+```yaml
+rules:
+  - match:
+      method: GET
+      path: "/tasks*"
+    action: allow
+    rate_limit:
+      max: 100
+      window: "1m"
+    time_range:
+      hours: ["09:00-17:00"]
+      days: ["mon", "tue", "wed", "thu", "fri"]
+```
+
+### endpoints.rules.rate_limit
+
+Rate limiting configuration.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max` | integer | | Maximum requests allowed in window |
+| `window` | string | `1m` | Time window (`30s`, `5m`, `1h`) |
+
+```yaml
+rate_limit:
+  max: 100
+  window: "1m"
+```
+
+### endpoints.rules.time_range
+
+Time-based restrictions.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hours` | array | Time ranges in 24h format (`["09:00-17:00"]`) |
+| `days` | array | Day abbreviations (`["mon", "tue", "wed", "thu", "fri"]`) |
+
+```yaml
+time_range:
+  hours: ["09:00-17:00", "20:00-22:00"]
+  days: ["mon", "tue", "wed", "thu", "fri"]
+```
+
+### notify
+
+Notification configuration for the `ask` action.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timeout` | string | How long to wait for approval (`5m`, `1h`) |
+| `webhook` | object | Generic webhook configuration |
+| `slack` | object | Slack webhook configuration |
+
+```yaml
+notify:
+  timeout: "5m"
+  slack:
+    webhook_url: "https://hooks.slack.com/services/..."
+```
+
+### notify.webhook
+
+Generic webhook notification.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | Webhook URL |
+| `headers` | map | No | Additional headers to send |
+
+```yaml
+webhook:
+  url: "https://your-service.example.com/notify"
+  headers:
+    Authorization: "Bearer your-token"
+    X-Custom-Header: "value"
+```
+
+Webhook payload:
+
+```json
+{
+  "title": "Approval Required",
+  "body": "Agent my-agent wants to DELETE /tasks/123",
+  "request_id": "abc123",
+  "endpoint": "todoist-api",
+  "method": "DELETE",
+  "path": "/tasks/123",
+  "agent_id": "my-agent",
+  "approve_url": "https://wardgate.example.com/approve/abc123?token=xyz",
+  "deny_url": "https://wardgate.example.com/deny/abc123?token=xyz"
+}
+```
+
+### notify.slack
+
+Slack webhook notification.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `webhook_url` | string | Yes | Slack incoming webhook URL |
+
+```yaml
+slack:
+  webhook_url: "https://hooks.slack.com/services/T00/B00/XXX"
+```
+
+To get a webhook URL:
+1. Go to [Slack App Directory](https://api.slack.com/apps)
+2. Create or select an app
+3. Enable Incoming Webhooks
+4. Create a webhook for your channel
+
+## Environment Variables
+
+Credentials are stored in environment variables for security.
+
+### Naming Convention
+
+```bash
+# Agent keys
+WARDGATE_AGENT_KEY=<agent-secret>
+WARDGATE_AGENT_<NAME>_KEY=<agent-secret>
+
+# Upstream credentials
+WARDGATE_CRED_<NAME>=<credential>
+```
+
+### Example .env File
+
+```bash
+# Agent authentication keys
+WARDGATE_AGENT_KEY=sk-agent-abc123def456
+WARDGATE_AGENT_CODING_KEY=sk-coding-xyz789
+
+# Upstream API credentials
+WARDGATE_CRED_TODOIST_API_KEY=0123456789abcdef
+WARDGATE_CRED_GOOGLE_CALENDAR_KEY=AIzaSy...
+WARDGATE_CRED_GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+```
+
+### Loading Environment Variables
+
+```bash
+# Automatic loading from .env
+./wardgate -config config.yaml
+
+# Specify different env file
+./wardgate -config config.yaml -env /path/to/.env
+
+# Or export manually
+export WARDGATE_AGENT_KEY=sk-agent-abc123
+./wardgate -config config.yaml
+```
+
+## Command Line Options
+
+```bash
+./wardgate [options]
+
+Options:
+  -config string
+        Path to config file (default "config.yaml")
+  -env string
+        Path to .env file (default ".env")
+```
+
+## Multiple Endpoints Example
+
+```yaml
+server:
+  listen: ":8080"
+
+agents:
+  - id: assistant
+    key_env: WARDGATE_AGENT_KEY
+
+endpoints:
+  # Todoist - task management
+  todoist-api:
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_TODOIST
+    rules:
+      - match: { method: GET }
+        action: allow
+      - match: { method: POST, path: "/tasks" }
+        action: allow
+      - match: { method: "*" }
+        action: deny
+
+  # Google Calendar - read only
+  google-calendar:
+    upstream: https://www.googleapis.com/calendar/v3
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_GOOGLE
+    rules:
+      - match: { method: GET }
+        action: allow
+      - match: { method: "*" }
+        action: deny
+
+  # GitHub - limited write
+  github-api:
+    upstream: https://api.github.com
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_GITHUB
+    rules:
+      - match: { method: GET }
+        action: allow
+      - match: { method: POST, path: "/repos/*/issues" }
+        action: allow
+        rate_limit: { max: 10, window: "1h" }
+      - match: { method: "*" }
+        action: ask
+```
+
+## Validation
+
+Wardgate validates configuration on startup:
+
+- All endpoints must have `upstream` and `auth`
+- All `credential_env` and `key_env` must exist in environment
+- All `action` values must be valid (`allow`, `deny`, `ask`)
+- Rate limit `window` must be valid duration
+
+Invalid configuration causes startup failure with descriptive error.
+
+## Security Recommendations
+
+1. **Never commit .env files** - Add to `.gitignore`
+2. **Use strong agent keys** - At least 32 random characters
+3. **Separate credentials by endpoint** - Don't reuse across services
+4. **Restrict file permissions** - `chmod 600 .env`
+5. **Rotate credentials regularly** - Especially after suspected exposure
