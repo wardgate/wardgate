@@ -1,0 +1,29 @@
+server:
+  listen: ":8080"
+
+agents:
+  - id: agent-name
+    key_env: WARDGATE_AGENT_KEY
+
+endpoints:
+  todoist-api:
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_TODOIST_API_KEY
+    rules:
+      - match:
+          method: GET
+        action: allow
+      - match:
+          method: POST
+          path: "/tasks"
+        action: allow
+      - match:
+          method: POST
+          path: "/tasks/*/close"
+        action: allow
+      - match:
+          method: "*"
+        action: deny
+        message: "Operation not permitted"
