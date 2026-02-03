@@ -1,0 +1,21 @@
+name: sentry
+description: "Sentry error tracking API"
+upstream: https://sentry.io/api/0
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read projects, issues, and events"
+    rules:
+      - match: { method: GET }
+
+  - name: resolve_issues
+    description: "Resolve and update issue status"
+    rules:
+      - match: { method: PUT, path: "/issues/*" }
+
+  - name: manage_projects
+    description: "Create and update projects"
+    rules:
+      - match: { method: POST, path: "/teams/*/projects" }
+      - match: { method: PUT, path: "/projects/*" }

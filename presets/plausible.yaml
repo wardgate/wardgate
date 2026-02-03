@@ -1,0 +1,15 @@
+name: plausible
+description: "Plausible Analytics API"
+upstream: https://plausible.io/api/v1
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read analytics data and stats"
+    rules:
+      - match: { method: GET }
+
+  - name: send_events
+    description: "Send custom events"
+    rules:
+      - match: { method: POST, path: "/event" }

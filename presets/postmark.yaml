@@ -1,0 +1,26 @@
+name: postmark
+description: "Postmark email delivery API"
+upstream: https://api.postmarkapp.com
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read server info, stats, and message history"
+    rules:
+      - match: { method: GET }
+
+  - name: send_email
+    description: "Send single emails"
+    rules:
+      - match: { method: POST, path: "/email" }
+
+  - name: send_batch
+    description: "Send batch emails"
+    rules:
+      - match: { method: POST, path: "/email/batch" }
+
+  - name: send_templates
+    description: "Send emails using templates"
+    rules:
+      - match: { method: POST, path: "/email/withTemplate" }
+      - match: { method: POST, path: "/email/batchWithTemplates" }

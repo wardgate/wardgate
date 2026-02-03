@@ -75,24 +75,33 @@ Instead of giving your agent a Todoist API key:
 todoist_api_key: "abc123..."
 ```
 
-You configure Wardgate:
+You configure Wardgate using a **preset** (easiest):
 
-# Wardgate config (agent never sees this)
 ```yaml
-server:
-  listen: ":8080"
+# Wardgate config - using preset (recommended)
+endpoints:
+  todoist:
+    preset: todoist
+    auth:
+      credential_env: WARDGATE_CRED_TODOIST_API_KEY
+    capabilities:
+      read_data: allow       # Read tasks, projects
+      create_tasks: allow    # Create new tasks
+      close_tasks: allow     # Mark tasks complete
+      delete_tasks: deny     # Never delete
+```
 
-agents:
-  - id: agent-name
-    key_env: WARDGATE_AGENT_KEY
+Or with full manual configuration:
 
+```yaml
+# Wardgate config - manual (for custom APIs)
 endpoints:
   todoist-api:
     upstream: https://api.todoist.com/rest/v2
     auth:
       type: bearer
       credential_env: WARDGATE_CRED_TODOIST_API_KEY
-    default_rules:
+    rules:
       - match: { method: GET }
         action: allow
       - match: { method: DELETE }
@@ -156,6 +165,85 @@ Key sections:
 - `agents` - List of agents and their key env vars
 - `endpoints` - Map of endpoint name to upstream config and rules
 - `notify` - Notification settings for approval workflows
+
+## Presets (Easy Setup)
+
+Wardgate includes presets for popular APIs in the `presets/` directory. Just specify the preset name and your credentials:
+
+```yaml
+presets_dir: ./presets
+
+endpoints:
+  github:
+    preset: github
+    auth:
+      credential_env: WARDGATE_CRED_GITHUB_TOKEN
+    capabilities:
+      read_data: allow
+      create_issues: allow
+      create_comments: allow
+      create_pull_requests: ask  # Require approval
+```
+
+### Available Presets
+
+| Preset | Service | Capabilities |
+|--------|---------|--------------|
+| `cloudflare` | Cloudflare | read_data, manage_dns, purge_cache, manage_page_rules |
+| `github` | GitHub | read_data, create_issues, create_comments, manage_labels, create_pull_requests, manage_releases |
+| `google-calendar` | Google Calendar | read_data, create_events, update_events, delete_events |
+| `imap` | IMAP Email | list_folders, read_inbox, read_all_folders, mark_read, move_messages |
+| `pingping` | PingPing.io | read_data, create_monitors, update_monitors, delete_monitors, manage_checks |
+| `plausible` | Plausible | read_data, send_events |
+| `postmark` | Postmark | read_data, send_email, send_batch, send_templates |
+| `sentry` | Sentry | read_data, resolve_issues, manage_projects |
+| `smtp` | SMTP Email | send_email |
+| `todoist` | Todoist | read_data, create_tasks, close_tasks, update_tasks, delete_tasks, manage_projects |
+
+Each capability can be set to `allow`, `deny`, or `ask` (require human approval).
+
+### Custom Presets
+
+The easiest way to define new presets is to add a new YAML file in the `presets/` directory.
+
+See [Configuration Reference](docs/config.md#custom-presets-user-defined) for details.
+
+```yaml
+# presets/my-api.yaml
+name: my-api
+description: "My Custom API"
+upstream: https://api.example.com
+auth_type: bearer
+```
+
+But you can also define your own presets in the config file:
+
+```yaml
+# In config.yaml
+custom_presets:
+  my-api:
+    description: "My Custom API"
+    upstream: https://api.example.com
+    auth_type: bearer
+    capabilities:
+      - name: read_data
+        description: "Read resources"
+        rules:
+          - match: { method: GET }
+      - name: write_data
+        description: "Write resources"
+        rules:
+          - match: { method: POST }
+
+endpoints:
+  my-api:
+    preset: my-api
+    auth:
+      credential_env: MY_API_KEY
+    capabilities:
+      read_data: allow
+      write_data: ask
+```
 
 ## Policy Rules
 

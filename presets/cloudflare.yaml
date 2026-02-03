@@ -1,0 +1,30 @@
+name: cloudflare
+description: "Cloudflare API v4"
+upstream: https://api.cloudflare.com/client/v4
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read zones, DNS records, and other data"
+    rules:
+      - match: { method: GET }
+
+  - name: manage_dns
+    description: "Create, update, and delete DNS records"
+    rules:
+      - match: { method: POST, path: "/zones/*/dns_records" }
+      - match: { method: PATCH, path: "/zones/*/dns_records/*" }
+      - match: { method: PUT, path: "/zones/*/dns_records/*" }
+      - match: { method: DELETE, path: "/zones/*/dns_records/*" }
+
+  - name: purge_cache
+    description: "Purge cached content"
+    rules:
+      - match: { method: POST, path: "/zones/*/purge_cache" }
+
+  - name: manage_page_rules
+    description: "Create and manage page rules"
+    rules:
+      - match: { method: POST, path: "/zones/*/pagerules" }
+      - match: { method: PATCH, path: "/zones/*/pagerules/*" }
+      - match: { method: DELETE, path: "/zones/*/pagerules/*" }

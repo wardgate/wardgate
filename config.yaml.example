@@ -9,118 +9,114 @@ agents:
 # Notification settings for "ask" workflow
 notify:
   timeout: "5m"  # How long to wait for approval
-  # Slack webhook (optional)
   # slack:
   #   webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-  # Generic webhook (optional)
   # webhook:
   #   url: "https://your-webhook.example.com/notify"
   #   headers:
   #     Authorization: "Bearer your-token"
 
+# =============================================================================
+# PRESETS DIRECTORY
+# =============================================================================
+# Presets are loaded from YAML files. The presets/ directory contains
+# pre-configured presets for popular APIs. See docs/presets.md for details.
+
+# Load presets from the presets directory (required for using presets)
+presets_dir: ./presets
+
+# =============================================================================
+# CUSTOM PRESETS (optional)
+# =============================================================================
+# Define your own presets inline, or add YAML files to presets_dir.
+
+# Or define inline custom presets
+# custom_presets:
+#   my-internal-api:
+#     description: "My Company Internal API"
+#     upstream: https://api.internal.company.com/v1
+#     auth_type: bearer
+#     capabilities:
+#       - name: read_data
+#         description: "Read resources"
+#         rules:
+#           - match: { method: GET }
+#       - name: create_resources
+#         description: "Create new resources"
+#         rules:
+#           - match: { method: POST, path: "/resources" }
+#       - name: delete_resources
+#         description: "Delete resources"
+#         rules:
+#           - match: { method: DELETE }
+
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
+
 endpoints:
-  todoist-api:
-    upstream: https://api.todoist.com/rest/v2
+  # ---------------------------------------------------------------------------
+  # USING PRESETS (recommended)
+  # ---------------------------------------------------------------------------
+  # See docs/presets.md for all presets, capabilities and examples.
+
+  todoist:
+    preset: todoist
     auth:
-      type: bearer
       credential_env: WARDGATE_CRED_TODOIST_API_KEY
-    rules:
-      # Allow GET with rate limiting
-      - match:
-          method: GET
-        action: allow
-        rate_limit:
-          max: 100
-          window: "1m"
+    capabilities:
+      read_data: allow
+      create_tasks: allow
+      close_tasks: allow
+      update_tasks: ask
+      delete_tasks: deny
 
-      # Allow creating tasks
-      - match:
-          method: POST
-          path: "/tasks"
-        action: allow
+  # ---------------------------------------------------------------------------
+  # MANUAL CONFIGURATION (for custom APIs or advanced use)
+  # ---------------------------------------------------------------------------
+  # See docs/config.md for full configuration reference.
 
-      # Allow closing tasks (glob pattern)
-      - match:
-          method: POST
-          path: "/tasks/*/close"
-        action: allow
+  # custom-api:
+  #   upstream: https://api.example.com/v1
+  #   auth:
+  #     type: bearer
+  #     credential_env: WARDGATE_CRED_CUSTOM_API
+  #   rules:
+  #     - match: { method: GET }
+  #       action: allow
+  #     - match: { method: POST, path: "/allowed-endpoint" }
+  #       action: allow
+  #     - match: { method: "*" }
+  #       action: deny
 
-      # Require approval for updates (only during business hours)
-      - match:
-          method: PUT
-          path: "/tasks/*"
-        action: ask
-        time_range:
-          hours: ["09:00-18:00"]
-          days: ["mon", "tue", "wed", "thu", "fri"]
+  # ---------------------------------------------------------------------------
+  # IMAP (email reading) - using preset
+  # ---------------------------------------------------------------------------
 
-      # Deny all other operations
-      - match:
-          method: "*"
-        action: deny
-        message: "Operation not permitted"
+  # mail-read:
+  #   preset: imap
+  #   upstream: imaps://imap.gmail.com:993  # Override with your server
+  #   auth:
+  #     credential_env: WARDGATE_CRED_IMAP  # format: user@gmail.com:app-password
+  #   capabilities:
+  #     list_folders: allow
+  #     read_inbox: allow
+  #     mark_read: ask
 
-  imap-personal:
-    adapter: imap
-    upstream: imaps://imap.gmail.com:993
-    auth:
-      type: plain
-      credential_env: WARDGATE_CRED_IMAP  # format: user@gmail.com:app-password
-    imap:
-      tls: true  # For ProtonBridge use false for StartTLS
-    rules:
-      # Allow listing folders
-      - match:
-          path: "/folders"
-        action: allow
-      # Allow reading inbox
-      - match:
-          path: "/folders/inbox*"
-        action: allow
-      # Allow fetching individual messages
-      - match:
-          method: GET
-          path: "/message/*"
-        action: allow
-      # Require approval for modifications
-      - match:
-          method: POST
-        action: ask
-      # Deny everything else
-      - match:
-          path: "/*"
-        action: deny
+  # ---------------------------------------------------------------------------
+  # SMTP (email sending) - using preset
+  # ---------------------------------------------------------------------------
 
-  smtp-personal:
-    adapter: smtp
-    upstream: smtps://smtp.gmail.com:465  # Or smtp://smtp.gmail.com:587 for STARTTLS
-    auth:
-      type: plain
-      credential_env: WARDGATE_CRED_SMTP  # format: user@gmail.com:app-password
-    smtp:
-      tls: true  # Use implicit TLS (port 465). Set to false and starttls: true for port 587
-      from: "your-email@gmail.com"
-      # Allowlist recipients (if set, only these recipients can receive mail)
-      # allowed_recipients:
-      #   - "@company.com"  # Allow entire domain
-      #   - "specific@example.com"  # Allow specific address
-      # Known recipients (don't require approval)
-      known_recipients:
-        - "@company.com"
-      # Ask before sending to new recipients
-      ask_new_recipients: true
-      # Block emails containing these keywords
-      blocked_keywords:
-        - "password"
-        - "secret"
-        - "confidential"
-    rules:
-      # Allow sending emails
-      - match:
-          method: POST
-          path: "/send"
-        action: allow
-      # Deny everything else
-      - match:
-          method: "*"
-        action: deny
+  # mail-send:
+  #   preset: smtp
+  #   upstream: smtps://smtp.gmail.com:465  # Override with your server
+  #   auth:
+  #     credential_env: WARDGATE_CRED_SMTP  # format: user@gmail.com:app-password
+  #   capabilities:
+  #     send_email: ask
+  #   # Optional: additional SMTP controls (see docs/config.md)
+  #   # smtp:
+  #   #   from: "your-email@gmail.com"
+  #   #   known_recipients:
+  #   #     - "@company.com"
+  #   #   ask_new_recipients: true

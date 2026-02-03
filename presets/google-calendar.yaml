@@ -1,0 +1,26 @@
+name: google-calendar
+description: "Google Calendar API v3"
+upstream: https://www.googleapis.com/calendar/v3
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read calendars and events"
+    rules:
+      - match: { method: GET }
+
+  - name: create_events
+    description: "Create new calendar events"
+    rules:
+      - match: { method: POST, path: "/calendars/*/events" }
+
+  - name: update_events
+    description: "Update existing calendar events"
+    rules:
+      - match: { method: PUT, path: "/calendars/*/events/*" }
+      - match: { method: PATCH, path: "/calendars/*/events/*" }
+
+  - name: delete_events
+    description: "Delete calendar events"
+    rules:
+      - match: { method: DELETE, path: "/calendars/*/events/*" }

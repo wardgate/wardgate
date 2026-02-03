@@ -1,0 +1,32 @@
+name: pingping
+description: "PingPing.io Uptime Monitoring API"
+upstream: https://pingping.io/webapi
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read monitors and statistics"
+    rules:
+      - match: { method: GET }
+
+  - name: create_monitors
+    description: "Create new website monitors"
+    rules:
+      - match: { method: POST, path: "/monitors" }
+
+  - name: update_monitors
+    description: "Update existing monitors"
+    rules:
+      - match: { method: PUT, path: "/monitors/*" }
+
+  - name: delete_monitors
+    description: "Delete monitors"
+    rules:
+      - match: { method: DELETE, path: "/monitors/*" }
+
+  - name: manage_checks
+    description: "Update, enable, and disable checks"
+    rules:
+      - match: { method: PUT, path: "/checks/*" }
+      - match: { method: POST, path: "/checks/*/enable" }
+      - match: { method: POST, path: "/checks/*/disable" }

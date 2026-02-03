@@ -1,0 +1,32 @@
+name: imap
+description: "IMAP email reading (generic)"
+upstream: imaps://imap.example.com:993
+auth_type: plain
+adapter: imap
+
+capabilities:
+  - name: list_folders
+    description: "List mailbox folders"
+    rules:
+      - match: { method: GET, path: "/folders" }
+
+  - name: read_inbox
+    description: "Read messages from inbox"
+    rules:
+      - match: { method: GET, path: "/folders/inbox*" }
+      - match: { method: GET, path: "/folders/INBOX*" }
+
+  - name: read_all_folders
+    description: "Read messages from any folder"
+    rules:
+      - match: { method: GET, path: "/folders/*" }
+
+  - name: mark_read
+    description: "Mark messages as read"
+    rules:
+      - match: { method: POST, path: "/folders/*/messages/*/mark-read" }
+
+  - name: move_messages
+    description: "Move messages between folders"
+    rules:
+      - match: { method: POST, path: "/folders/*/messages/*/move" }

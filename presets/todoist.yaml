@@ -1,0 +1,37 @@
+name: todoist
+description: "Todoist task management API"
+upstream: https://api.todoist.com/rest/v2
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read tasks, projects, labels, and other data"
+    rules:
+      - match: { method: GET }
+
+  - name: create_tasks
+    description: "Create new tasks"
+    rules:
+      - match: { method: POST, path: "/tasks" }
+
+  - name: close_tasks
+    description: "Mark tasks as complete"
+    rules:
+      - match: { method: POST, path: "/tasks/*/close" }
+
+  - name: update_tasks
+    description: "Update existing tasks"
+    rules:
+      - match: { method: POST, path: "/tasks/*" }
+
+  - name: delete_tasks
+    description: "Delete tasks permanently"
+    rules:
+      - match: { method: DELETE, path: "/tasks/*" }
+
+  - name: manage_projects
+    description: "Create, update, and delete projects"
+    rules:
+      - match: { method: POST, path: "/projects" }
+      - match: { method: POST, path: "/projects/*" }
+      - match: { method: DELETE, path: "/projects/*" }

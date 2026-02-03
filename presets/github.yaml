@@ -1,0 +1,38 @@
+name: github
+description: "GitHub REST API"
+upstream: https://api.github.com
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read repositories, issues, pull requests, and other data"
+    rules:
+      - match: { method: GET }
+
+  - name: create_issues
+    description: "Create new issues in repositories"
+    rules:
+      - match: { method: POST, path: "/repos/*/issues" }
+
+  - name: create_comments
+    description: "Add comments to issues and pull requests"
+    rules:
+      - match: { method: POST, path: "/repos/*/issues/*/comments" }
+      - match: { method: POST, path: "/repos/*/pulls/*/comments" }
+
+  - name: manage_labels
+    description: "Add and remove labels on issues"
+    rules:
+      - match: { method: POST, path: "/repos/*/issues/*/labels" }
+      - match: { method: DELETE, path: "/repos/*/issues/*/labels/*" }
+
+  - name: create_pull_requests
+    description: "Create new pull requests"
+    rules:
+      - match: { method: POST, path: "/repos/*/pulls" }
+
+  - name: manage_releases
+    description: "Create and manage releases"
+    rules:
+      - match: { method: POST, path: "/repos/*/releases" }
+      - match: { method: PATCH, path: "/repos/*/releases/*" }

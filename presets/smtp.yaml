@@ -1,0 +1,11 @@
+name: smtp
+description: "SMTP email sending (generic)"
+upstream: smtps://smtp.example.com:465
+auth_type: plain
+adapter: smtp
+
+capabilities:
+  - name: send_email
+    description: "Send emails"
+    rules:
+      - match: { method: POST, path: "/send" }

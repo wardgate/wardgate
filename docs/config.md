@@ -24,6 +24,167 @@ vim .env
 ./wardgate -config config.yaml
 ```
 
+## Presets (Easy Configuration)
+
+Presets let you configure popular APIs with minimal setup. Instead of manually specifying upstream URLs, auth types, and rules, just use a preset name.
+
+Presets are stored as YAML files in the `presets/` directory. You must set `presets_dir` to use them:
+
+```yaml
+presets_dir: ./presets
+
+endpoints:
+  todoist:
+    preset: todoist
+    auth:
+      credential_env: WARDGATE_CRED_TODOIST_API_KEY
+    capabilities:
+      read_data: allow
+      create_tasks: allow
+      delete_tasks: deny
+```
+
+**Included presets:** `todoist`, `github`, `cloudflare`, `google-calendar`, `postmark`, `sentry`, `plausible`
+
+**Capability actions:** `allow`, `deny`, `ask` (require human approval)
+
+See the **[Presets Reference](presets.md)** for all presets, capabilities, and examples.
+
+### Overriding Preset Defaults
+
+You can override any preset value:
+
+```yaml
+endpoints:
+  custom-todoist:
+    preset: todoist
+    upstream: https://my-proxy.example.com/todoist  # Custom upstream
+    auth:
+      credential_env: MY_TODOIST_KEY
+    rules:  # Custom rules override preset defaults
+      - match: { method: GET }
+        action: allow
+      - match: { method: "*" }
+        action: deny
+```
+
+## Custom Presets (User-Defined)
+
+You can define your own presets for APIs not included with the source code. You are encouraged to share them with the community by adding them to the `presets/` directory via a Pull Request.
+
+### Option 1: External Preset Files
+
+Create YAML files in a `presets/` directory:
+
+```yaml
+# presets/helpscout.yaml
+name: helpscout
+description: "Help Scout customer support API"
+upstream: https://api.helpscout.net/v2
+auth_type: bearer
+
+capabilities:
+  - name: read_conversations
+    description: "Read conversations and threads"
+    rules:
+      - match: { method: GET, path: "/conversations*" }
+
+  - name: reply_to_conversations
+    description: "Reply to customer conversations"
+    rules:
+      - match: { method: POST, path: "/conversations/*/reply" }
+
+  - name: manage_customers
+    description: "Create and update customer profiles"
+    rules:
+      - match: { method: POST, path: "/customers" }
+      - match: { method: PUT, path: "/customers/*" }
+
+default_rules:
+  - match: { method: GET }
+    action: allow
+  - match: { method: "*" }
+    action: deny
+```
+
+Then reference in your config:
+
+```yaml
+presets_dir: ./presets
+
+endpoints:
+  helpscout:
+    preset: helpscout
+    auth:
+      credential_env: HELPSCOUT_TOKEN
+    capabilities:
+      read_conversations: allow
+      reply_to_conversations: ask
+      manage_customers: deny
+```
+
+### Option 2: Inline Custom Presets
+
+Define presets directly in your config file:
+
+```yaml
+custom_presets:
+  my-internal-api:
+    description: "Company Internal API"
+    upstream: https://api.internal.company.com/v1
+    auth_type: bearer
+    capabilities:
+      - name: read_data
+        description: "Read resources"
+        rules:
+          - match: { method: GET }
+      - name: write_data
+        description: "Create/update resources"
+        rules:
+          - match: { method: POST }
+          - match: { method: PUT }
+    default_rules:
+      - match: { method: GET }
+        action: allow
+      - match: { method: "*" }
+        action: deny
+
+endpoints:
+  internal:
+    preset: my-internal-api
+    auth:
+      credential_env: INTERNAL_API_KEY
+    capabilities:
+      read_data: allow
+      write_data: ask
+```
+
+### Custom Preset File Format
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Preset name (defaults to filename) |
+| `description` | string | Yes | Human-readable description |
+| `upstream` | string | Yes | Base URL of the API |
+| `auth_type` | string | Yes | Auth type (`bearer` or `plain`) |
+| `capabilities` | array | No | List of named capabilities |
+| `default_rules` | array | No | Default rules when no capabilities specified |
+
+### Capability Definition
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Capability identifier |
+| `description` | string | Yes | Human-readable description |
+| `rules` | array | Yes | Rules to apply when capability is enabled |
+
+### Preset Priority
+
+When multiple presets exist with the same name:
+
+1. **Inline custom presets** (highest priority) - `custom_presets` in config.yaml
+2. **External preset files** - YAML files in `presets_dir`
+
 ## Full Configuration Example
 
 ```yaml
