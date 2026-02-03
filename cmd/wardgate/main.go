@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -22,10 +23,23 @@ import (
 	"github.com/wardgate/wardgate/internal/smtp"
 )
 
+// Set by goreleaser ldflags
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	envPath := flag.String("env", ".env", "Path to .env file")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("wardgate %s (commit: %s, built: %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	// Load environment variables
 	if err := godotenv.Load(*envPath); err != nil {
