@@ -2,6 +2,13 @@
   <img src="docs/assets/wardgate-banner.png" alt="Wardgate Banner" width="800">
 </p>
 
+<p align="center">
+  <a href="https://github.com/wardgate/wardgate/actions/workflows/ci.yml"><img src="https://github.com/wardgate/wardgate/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://goreportcard.com/report/github.com/wardgate/wardgate"><img src="https://goreportcard.com/badge/github.com/wardgate/wardgate" alt="Go Report Card"></a>
+  <img src="https://img.shields.io/badge/go-1.22-blue" alt="Go Version">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
+
 # Wardgate - AI Agent Security Gateway
 
 *Wardgate* is a security proxy that sits between AI agents and external services, providing credential isolation, access control, and audit logging.
