@@ -31,6 +31,12 @@ var (
 )
 
 func main() {
+	// Check for CLI subcommands before parsing flags
+	if len(os.Args) > 1 && os.Args[1] == "approvals" {
+		runCLI(os.Args[1:])
+		return
+	}
+
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	envPath := flag.String("env", ".env", "Path to .env file")
 	showVersion := flag.Bool("version", false, "Show version and exit")

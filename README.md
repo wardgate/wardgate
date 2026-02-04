@@ -332,6 +332,56 @@ When an `ask` rule matches:
 3. Human clicks approve or deny
 4. Request proceeds or returns 403
 
+## Admin UI & CLI
+
+Wardgate includes a web dashboard and CLI for managing approval requests.
+
+### Enabling the Admin UI
+
+Add an admin key to your configuration:
+
+```yaml
+server:
+  listen: ":8080"
+  admin_key_env: WARDGATE_ADMIN_KEY
+```
+
+Set the key in your environment:
+
+```bash
+export WARDGATE_ADMIN_KEY=your-secret-admin-key
+```
+
+Access the dashboard at `http://localhost:8080/ui/`. Enter your admin key to login.
+
+### CLI Usage
+
+The same binary provides CLI commands for managing approvals:
+
+```bash
+# Set environment variables
+export WARDGATE_URL=http://localhost:8080
+export WARDGATE_ADMIN_KEY=your-secret-admin-key
+
+# List pending approvals
+wardgate approvals list
+
+# View details of an approval (including email content for SMTP)
+wardgate approvals view <id>
+
+# Approve or deny
+wardgate approvals approve <id>
+wardgate approvals deny <id>
+
+# View history of recent decisions
+wardgate approvals history
+
+# Monitor mode - live updates with interactive approve/deny
+wardgate approvals monitor
+```
+
+The Web UI and CLI show full request content for email approvals, allowing you to review the recipient, subject, and body before approving.
+
 ## IMAP Support
 
 Wardgate can proxy IMAP servers via a REST API, letting your agents read email without direct IMAP access:

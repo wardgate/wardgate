@@ -34,6 +34,10 @@ See the **[Presets Reference](presets.md)** for all capabilities and examples.
 - [Policy System](policies.md) - Writing and configuring rules
 - [Deployment Guide](deployment.md) - Docker, Caddy, and production setup
 
+## Admin UI & CLI
+
+Wardgate includes a web dashboard (`/ui/`) and CLI for managing approval requests. Configure `admin_key_env` in your server settings to enable. See the [README](../README.md#admin-ui--cli) for details.
+
 ## Quick Links
 
 - [GitHub Repository](https://github.com/wardgate/wardgate)

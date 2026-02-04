@@ -236,12 +236,23 @@ Server configuration.
 |-------|------|---------|-------------|
 | `listen` | string | `:8080` | Address and port to listen on |
 | `approval_url` | string | | Base URL for approval links in notifications |
+| `admin_key_env` | string | | Env var for admin key (enables Web UI at `/ui/` and CLI) |
 
 ```yaml
 server:
   listen: ":8080"                              # Listen on all interfaces, port 8080
   approval_url: "https://wardgate.example.com" # For approval links
+  admin_key_env: WARDGATE_ADMIN_KEY            # Enables admin Web UI and CLI
 ```
+
+#### Admin UI and CLI
+
+When `admin_key_env` is set and the corresponding environment variable contains a key, Wardgate enables:
+
+- **Web UI** at `/ui/` - Dashboard for viewing and managing pending approvals
+- **CLI commands** - `wardgate approvals list|approve|deny|view|history|monitor`
+
+The admin key authenticates both the Web UI (via localStorage + Authorization header) and CLI commands.
 
 #### Listen Address Examples
 
@@ -461,6 +472,9 @@ WARDGATE_CRED_<NAME>=<credential>
 ### Example .env File
 
 ```bash
+# Admin key (for Web UI and CLI)
+WARDGATE_ADMIN_KEY=your-secret-admin-key
+
 # Agent authentication keys
 WARDGATE_AGENT_GEORGE_KEY=sk-agent-xyz789
 
@@ -494,7 +508,47 @@ Options:
         Path to config file (default "config.yaml")
   -env string
         Path to .env file (default ".env")
+  -version
+        Show version and exit
 ```
+
+## CLI Commands for Approvals
+
+Wardgate includes CLI commands for managing approval requests:
+
+```bash
+# Set environment variables
+export WARDGATE_URL=http://localhost:8080
+export WARDGATE_ADMIN_KEY=your-secret-admin-key
+
+# List pending approvals
+wardgate approvals list
+
+# View details of an approval (including full email content)
+wardgate approvals view <id>
+
+# Approve or deny a request
+wardgate approvals approve <id>
+wardgate approvals deny <id>
+
+# View history of recent decisions
+wardgate approvals history
+
+# Monitor mode - live updates with interactive approve/deny
+wardgate approvals monitor
+```
+
+### Monitor Mode
+
+The `monitor` command provides a live view of pending approvals with interactive commands:
+
+- `a <id>` or `approve <id>` - Approve a request
+- `d <id>` or `deny <id>` - Deny a request
+- `v <id>` or `view <id>` - View full request details
+- `r` or `refresh` - Refresh the list
+- `q` or `quit` - Exit monitor mode
+
+The list auto-refreshes every 3 seconds.
 
 ## Multiple Endpoints Example
 
