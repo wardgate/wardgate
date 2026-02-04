@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/policy"
 )
@@ -592,6 +593,11 @@ type mockApprovalManager struct {
 }
 
 func (m *mockApprovalManager) RequestApproval(ctx context.Context, endpoint, method, path, agentID string) (bool, error) {
+	m.approvalRequested = true
+	return m.approved, nil
+}
+
+func (m *mockApprovalManager) RequestApprovalWithContent(ctx context.Context, req approval.ApprovalRequest) (bool, error) {
 	m.approvalRequested = true
 	return m.approved, nil
 }

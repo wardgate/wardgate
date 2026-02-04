@@ -171,6 +171,33 @@ func main() {
 		rootMux.Handle("/status/", approvalMgr.Handler())
 	}
 
+	// Register admin UI if admin key is configured
+	if cfg.Server.AdminKeyEnv != "" {
+		adminKey := os.Getenv(cfg.Server.AdminKeyEnv)
+		if adminKey != "" {
+			if approvalMgr == nil {
+				// Create approval manager even without notifiers for admin UI
+				timeout := 5 * time.Minute
+				if cfg.Notify.Timeout != "" {
+					if d, err := time.ParseDuration(cfg.Notify.Timeout); err == nil {
+						timeout = d
+					}
+				}
+				baseURL := cfg.Server.ApprovalURL
+				if baseURL == "" {
+					baseURL = "http://localhost" + cfg.Server.Listen
+				}
+				approvalMgr = approval.NewManager(baseURL, timeout)
+			}
+			adminHandler := approval.NewAdminHandler(approvalMgr, adminKey)
+			uiHandler := approval.NewUIHandler(adminHandler)
+			rootMux.Handle("/ui/", uiHandler)
+			log.Printf("Admin UI enabled at /ui/")
+		} else {
+			log.Printf("Warning: admin_key_env %s is set but empty, admin UI disabled", cfg.Server.AdminKeyEnv)
+		}
+	}
+
 	// All other requests go through agent auth
 	rootMux.Handle("/", authedAPI)
 

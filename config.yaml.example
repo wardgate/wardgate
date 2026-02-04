@@ -1,6 +1,7 @@
 server:
   listen: ":8080"
   approval_url: "http://localhost:8080"  # Base URL for approval links
+  admin_key_env: WARDGATE_ADMIN_KEY      # Env var for admin key (enables Web UI at /ui/)
 
 agents:
   - id: agent-name

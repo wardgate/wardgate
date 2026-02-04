@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/wardgate/wardgate/internal/approval"
 )
 
 var (
@@ -66,4 +68,5 @@ type ConnectionConfig struct {
 // ApprovalRequester is the interface for requesting approval.
 type ApprovalRequester interface {
 	RequestApproval(ctx context.Context, endpoint, method, path, agentID string) (bool, error)
+	RequestApprovalWithContent(ctx context.Context, req approval.ApprovalRequest) (bool, error)
 }

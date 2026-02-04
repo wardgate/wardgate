@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -139,9 +140,20 @@ func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request, agentID str
 			return
 		}
 
-		// Build approval description
-		approvalPath := fmt.Sprintf("/send to %s: %s", strings.Join(email.To, ", "), email.Subject)
-		approved, err := h.approvals.RequestApproval(r.Context(), h.config.EndpointName, r.Method, approvalPath, agentID)
+		// Build approval request with full email content for review
+		emailJSON, _ := json.Marshal(req)
+		summary := fmt.Sprintf("Email to %s: %s", strings.Join(email.To, ", "), email.Subject)
+
+		approved, err := h.approvals.RequestApprovalWithContent(r.Context(), approval.ApprovalRequest{
+			Endpoint:    h.config.EndpointName,
+			Method:      r.Method,
+			Path:        "/send",
+			AgentID:     agentID,
+			ContentType: "email",
+			Summary:     summary,
+			Body:        string(emailJSON),
+			Headers:     map[string]string{"Content-Type": "application/json"},
+		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf("approval failed: %v", err), http.StatusForbidden)
 			return

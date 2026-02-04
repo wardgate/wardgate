@@ -39,33 +39,67 @@ func (s Status) String() string {
 
 // Request represents a pending approval request.
 type Request struct {
-	ID        string
-	Token     string // Secret token for approving/denying
-	Endpoint  string
-	Method    string
-	Path      string
-	AgentID   string
-	Status    Status
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	done      chan Status
+	ID          string
+	Token       string // Secret token for approving/denying
+	Endpoint    string
+	Method      string
+	Path        string
+	AgentID     string
+	Status      Status
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	RespondedAt time.Time // When approved/denied
+	done        chan Status
+
+	// Extended fields for content approval (Phase 7)
+	ContentType string            // Type of content: "email", "api-call", etc.
+	Summary     string            // Human-readable summary
+	Body        string            // Full request body for review
+	Headers     map[string]string // Relevant headers
+}
+
+// ApprovalRequest is the input for creating a new approval request.
+type ApprovalRequest struct {
+	Endpoint    string
+	Method      string
+	Path        string
+	AgentID     string
+	ContentType string
+	Summary     string
+	Body        string
+	Headers     map[string]string
 }
 
 // Manager handles approval requests.
 type Manager struct {
-	mu        sync.RWMutex
-	requests  map[string]*Request
-	baseURL   string
-	timeout   time.Duration
-	notifiers []notify.Channel
+	mu           sync.RWMutex
+	requests     map[string]*Request
+	history      []*Request // Completed requests (approved/denied)
+	historyLimit int        // Max history items to keep
+	baseURL      string
+	timeout      time.Duration
+	notifiers    []notify.Channel
 }
 
 // NewManager creates a new approval manager.
 func NewManager(baseURL string, timeout time.Duration) *Manager {
 	return &Manager{
-		requests: make(map[string]*Request),
-		baseURL:  baseURL,
-		timeout:  timeout,
+		requests:     make(map[string]*Request),
+		history:      make([]*Request, 0),
+		historyLimit: 100, // Default history limit
+		baseURL:      baseURL,
+		timeout:      timeout,
+	}
+}
+
+// SetHistoryLimit sets the maximum number of history items to keep.
+func (m *Manager) SetHistoryLimit(limit int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.historyLimit = limit
+	// Trim if needed
+	if len(m.history) > limit {
+		m.history = m.history[len(m.history)-limit:]
 	}
 }
 
@@ -77,36 +111,57 @@ func (m *Manager) AddNotifier(n notify.Channel) {
 // RequestApproval creates a new approval request and notifies.
 // It blocks until approved, denied, or timeout.
 func (m *Manager) RequestApproval(ctx context.Context, endpoint, method, path, agentID string) (bool, error) {
+	return m.RequestApprovalWithContent(ctx, ApprovalRequest{
+		Endpoint: endpoint,
+		Method:   method,
+		Path:     path,
+		AgentID:  agentID,
+	})
+}
+
+// RequestApprovalWithContent creates a new approval request with full content and notifies.
+// It blocks until approved, denied, or timeout.
+func (m *Manager) RequestApprovalWithContent(ctx context.Context, ar ApprovalRequest) (bool, error) {
 	// Generate request ID and token
 	id := generateID()
 	token := generateToken()
 
 	req := &Request{
-		ID:        id,
-		Token:     token,
-		Endpoint:  endpoint,
-		Method:    method,
-		Path:      path,
-		AgentID:   agentID,
-		Status:    Pending,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(m.timeout),
-		done:      make(chan Status, 1),
+		ID:          id,
+		Token:       token,
+		Endpoint:    ar.Endpoint,
+		Method:      ar.Method,
+		Path:        ar.Path,
+		AgentID:     ar.AgentID,
+		Status:      Pending,
+		CreatedAt:   time.Now(),
+		ExpiresAt:   time.Now().Add(m.timeout),
+		done:        make(chan Status, 1),
+		ContentType: ar.ContentType,
+		Summary:     ar.Summary,
+		Body:        ar.Body,
+		Headers:     ar.Headers,
 	}
 
 	m.mu.Lock()
 	m.requests[id] = req
 	m.mu.Unlock()
 
+	// Build notification body
+	body := fmt.Sprintf("Agent %s wants to %s %s on %s", ar.AgentID, ar.Method, ar.Path, ar.Endpoint)
+	if ar.Summary != "" {
+		body = ar.Summary
+	}
+
 	// Send notifications
 	msg := notify.Message{
 		Title:      "Approval Required",
-		Body:       fmt.Sprintf("Agent %s wants to %s %s on %s", agentID, method, path, endpoint),
+		Body:       body,
 		RequestID:  id,
-		Endpoint:   endpoint,
-		Method:     method,
-		Path:       path,
-		AgentID:    agentID,
+		Endpoint:   ar.Endpoint,
+		Method:     ar.Method,
+		Path:       ar.Path,
+		AgentID:    ar.AgentID,
 		ApproveURL: fmt.Sprintf("%s/approve/%s?token=%s", m.baseURL, id, token),
 		DenyURL:    fmt.Sprintf("%s/deny/%s?token=%s", m.baseURL, id, token),
 	}
@@ -164,8 +219,89 @@ func (m *Manager) respond(id, token string, status Status) error {
 	}
 
 	req.Status = status
+	req.RespondedAt = time.Now()
 	req.done <- status
+
+	// Add to history
+	m.addToHistory(req)
+
 	return nil
+}
+
+// respondByID responds to a request by ID only (for admin API, no token needed).
+func (m *Manager) respondByID(id string, status Status) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	req, ok := m.requests[id]
+	if !ok {
+		return fmt.Errorf("request not found")
+	}
+
+	if req.Status != Pending {
+		return fmt.Errorf("request already %s", req.Status)
+	}
+
+	if time.Now().After(req.ExpiresAt) {
+		req.Status = Expired
+		return fmt.Errorf("request expired")
+	}
+
+	req.Status = status
+	req.RespondedAt = time.Now()
+	req.done <- status
+
+	// Add to history
+	m.addToHistory(req)
+
+	return nil
+}
+
+// ApproveByID approves a request by ID (for admin API).
+func (m *Manager) ApproveByID(id string) error {
+	return m.respondByID(id, Approved)
+}
+
+// DenyByID denies a request by ID (for admin API).
+func (m *Manager) DenyByID(id string) error {
+	return m.respondByID(id, Denied)
+}
+
+// addToHistory adds a request to the history (must be called with lock held).
+func (m *Manager) addToHistory(req *Request) {
+	m.history = append(m.history, req)
+	// Trim if over limit
+	if len(m.history) > m.historyLimit {
+		m.history = m.history[len(m.history)-m.historyLimit:]
+	}
+}
+
+// List returns all pending approval requests.
+func (m *Manager) List() []*Request {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var pending []*Request
+	for _, req := range m.requests {
+		if req.Status == Pending && time.Now().Before(req.ExpiresAt) {
+			pending = append(pending, req)
+		}
+	}
+	return pending
+}
+
+// History returns recent completed requests (newest first).
+func (m *Manager) History(limit int) []*Request {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Return in reverse order (newest first)
+	result := make([]*Request, 0, limit)
+	start := len(m.history) - 1
+	for i := start; i >= 0 && len(result) < limit; i-- {
+		result = append(result, m.history[i])
+	}
+	return result
 }
 
 // Get returns a request by ID (for status checks).
