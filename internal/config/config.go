@@ -217,6 +217,7 @@ type AgentConfig struct {
 // Endpoint defines a proxied service.
 type Endpoint struct {
 	Preset       string            `yaml:"preset,omitempty"`       // Preset name (e.g., "todoist", "github")
+	Description  string            `yaml:"description,omitempty"`  // User-friendly description for discovery API
 	Adapter      string            `yaml:"adapter,omitempty"`      // "http" (default), "imap", or "smtp"
 	Upstream     string            `yaml:"upstream,omitempty"`
 	Auth         AuthConfig        `yaml:"auth"`
@@ -413,6 +414,32 @@ func expandCapabilities(endpointName string, preset PresetInfo, capabilities map
 	})
 
 	return rules, nil
+}
+
+// GetEndpointDescription returns the description for an endpoint.
+// Priority: endpoint.Description > preset.Description > adapter name
+func (c *Config) GetEndpointDescription(name string, ep Endpoint) string {
+	// 1. Use explicit description if set
+	if ep.Description != "" {
+		return ep.Description
+	}
+
+	// 2. Use preset description if available
+	if ep.Preset != "" {
+		registry, err := c.buildPresetRegistry()
+		if err == nil {
+			if preset, ok := registry[ep.Preset]; ok && preset.Description != "" {
+				return preset.Description
+			}
+		}
+	}
+
+	// 3. Fallback to adapter name
+	adapter := strings.ToUpper(ep.Adapter)
+	if adapter == "" {
+		adapter = "HTTP"
+	}
+	return adapter
 }
 
 func (c *Config) validate() error {

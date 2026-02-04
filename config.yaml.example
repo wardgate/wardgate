@@ -63,6 +63,7 @@ endpoints:
 
   todoist:
     preset: todoist
+    description: "Todoist API (Personal)"  # Optional: shown in discovery API for agents
     auth:
       credential_env: WARDGATE_CRED_TODOIST_API_KEY
     capabilities:

@@ -900,3 +900,114 @@ endpoints:
 		t.Errorf("error should mention unknown capability: %v", err)
 	}
 }
+
+// GetEndpointDescription tests - Phase 8
+
+func TestGetEndpointDescription_ExplicitDescription(t *testing.T) {
+	yaml := `
+endpoints:
+  my-api:
+    description: "My Custom API"
+    upstream: https://api.example.com
+    auth:
+      type: bearer
+      credential_env: MY_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["my-api"]
+	desc := cfg.GetEndpointDescription("my-api", ep)
+	if desc != "My Custom API" {
+		t.Errorf("expected 'My Custom API', got %s", desc)
+	}
+}
+
+func TestGetEndpointDescription_PresetFallback(t *testing.T) {
+	yaml := `
+presets_dir: ../../presets
+endpoints:
+  todoist:
+    preset: todoist
+    auth:
+      credential_env: TODOIST_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["todoist"]
+	desc := cfg.GetEndpointDescription("todoist", ep)
+	// Should use preset description
+	if desc == "" || desc == "HTTP" {
+		t.Errorf("expected preset description, got %s", desc)
+	}
+}
+
+func TestGetEndpointDescription_AdapterFallback(t *testing.T) {
+	yaml := `
+endpoints:
+  mail:
+    adapter: imap
+    upstream: imaps://imap.example.com:993
+    auth:
+      type: plain
+      credential_env: IMAP_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["mail"]
+	desc := cfg.GetEndpointDescription("mail", ep)
+	if desc != "IMAP" {
+		t.Errorf("expected 'IMAP', got %s", desc)
+	}
+}
+
+func TestGetEndpointDescription_HTTPDefault(t *testing.T) {
+	yaml := `
+endpoints:
+  custom:
+    upstream: https://api.example.com
+    auth:
+      type: bearer
+      credential_env: API_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["custom"]
+	desc := cfg.GetEndpointDescription("custom", ep)
+	if desc != "HTTP" {
+		t.Errorf("expected 'HTTP', got %s", desc)
+	}
+}
+
+func TestGetEndpointDescription_ExplicitOverridesPreset(t *testing.T) {
+	yaml := `
+presets_dir: ../../presets
+endpoints:
+  todoist:
+    preset: todoist
+    description: "Paul's Tasks"
+    auth:
+      credential_env: TODOIST_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["todoist"]
+	desc := cfg.GetEndpointDescription("todoist", ep)
+	if desc != "Paul's Tasks" {
+		t.Errorf("expected 'Paul's Tasks', got %s", desc)
+	}
+}

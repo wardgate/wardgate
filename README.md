@@ -332,6 +332,32 @@ When an `ask` rule matches:
 3. Human reviews request in Web UI and approves or denies
 4. Request proceeds or returns 403
 
+## Endpoint Discovery API
+
+Agents can discover available endpoints via `GET /endpoints`:
+
+```bash
+curl -H "Authorization: Bearer $AGENT_KEY" http://localhost:8080/endpoints
+```
+
+Response:
+```json
+{
+  "endpoints": [
+    {"name": "todoist", "description": "Todoist API (Personal)"},
+    {"name": "imap-personal", "description": "IMAP (personal@example.com)"},
+    {"name": "smtp-personal", "description": "SMTP (personal@example.com)"}
+  ]
+}
+```
+
+The description comes from (in priority order):
+1. `description` field in endpoint config
+2. Preset description (if using a preset)
+3. Adapter name (IMAP, SMTP, HTTP)
+
+The description is meant for the agent to understand which API it is supposed to assume is behind it.
+
 ## Admin UI & CLI
 
 Wardgate includes a web dashboard and CLI for managing approval requests.

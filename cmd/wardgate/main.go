@@ -16,6 +16,7 @@ import (
 	"github.com/wardgate/wardgate/internal/audit"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/discovery"
 	"github.com/wardgate/wardgate/internal/imap"
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
@@ -163,6 +164,19 @@ func main() {
 
 		apiMux.Handle("/"+name+"/", http.StripPrefix("/"+name, h))
 	}
+
+	// Build endpoint info for discovery API
+	endpointInfos := make([]discovery.EndpointInfo, 0, len(cfg.Endpoints))
+	for name, endpoint := range cfg.Endpoints {
+		endpointInfos = append(endpointInfos, discovery.EndpointInfo{
+			Name:        name,
+			Description: cfg.GetEndpointDescription(name, endpoint),
+		})
+	}
+
+	// Register discovery API
+	discoveryHandler := discovery.NewHandler(endpointInfos)
+	apiMux.Handle("/endpoints", discoveryHandler)
 
 	// Wrap API endpoints with agent authentication
 	authedAPI := auth.NewAgentAuthMiddleware(cfg.Agents, apiMux)
