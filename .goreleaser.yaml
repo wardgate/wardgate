@@ -51,6 +51,8 @@ dockers_v2:
       - "{{ .Major }}.{{ .Minor }}"
       - "latest"
     dockerfile: Dockerfile.goreleaser
+    extra_files:
+      - presets
     labels:
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.revision": "{{.FullCommit}}"

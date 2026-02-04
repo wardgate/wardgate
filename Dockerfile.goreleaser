@@ -13,6 +13,9 @@ RUN adduser -D -u 1000 wardgate
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/wardgate /app/wardgate
 
+# Copy presets
+COPY presets /app/presets
+
 # Default config location
 VOLUME ["/app/config"]
 

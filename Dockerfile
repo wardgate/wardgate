@@ -30,6 +30,9 @@ RUN adduser -D -u 1000 wardgate
 # Copy binary from builder
 COPY --from=builder /app/wardgate /app/wardgate
 
+# Copy presets
+COPY --from=builder /app/presets /app/presets
+
 # Default config location
 VOLUME ["/app/config"]
 
