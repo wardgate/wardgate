@@ -19,11 +19,11 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE
@@ -42,6 +42,19 @@ changelog:
       - "^chore:"
       - Merge pull request
       - Merge branch
+
+dockers_v2:
+  - images:
+      - "avoutic/wardgate"
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - "latest"
+    dockerfile: Dockerfile.goreleaser
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
 
 release:
   github:
