@@ -1,6 +1,6 @@
 name: todoist
 description: "Todoist task management API"
-upstream: https://api.todoist.com/rest/v2
+upstream: https://api.todoist.com/api/v1
 auth_type: bearer
 
 capabilities:
