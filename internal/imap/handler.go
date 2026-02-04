@@ -28,9 +28,9 @@ type HandlerConfig struct {
 
 // Handler handles REST requests for IMAP operations.
 type Handler struct {
-	pool     PoolGetter
-	engine   *policy.Engine
-	config   HandlerConfig
+	pool   PoolGetter
+	engine *policy.Engine
+	config HandlerConfig
 }
 
 // NewHandler creates a new IMAP REST handler.

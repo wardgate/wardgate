@@ -150,8 +150,8 @@ func TestHandler_RecipientAllowlist(t *testing.T) {
 	client := &mockSMTPClient{}
 	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
 	handler := NewHandler(client, engine, HandlerConfig{
-		EndpointName:       "smtp-test",
-		AllowedRecipients:  []string{"@allowed.com", "specific@example.com"},
+		EndpointName:      "smtp-test",
+		AllowedRecipients: []string{"@allowed.com", "specific@example.com"},
 	})
 
 	tests := []struct {
@@ -304,9 +304,9 @@ func TestHandler_AskNewRecipients(t *testing.T) {
 	client := &mockSMTPClient{}
 	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
 	handler := NewHandler(client, engine, HandlerConfig{
-		EndpointName:      "smtp-test",
-		KnownRecipients:   []string{"known@example.com", "@known-domain.com"},
-		AskNewRecipients:  true,
+		EndpointName:     "smtp-test",
+		KnownRecipients:  []string{"known@example.com", "@known-domain.com"},
+		AskNewRecipients: true,
 	})
 	handler.SetApprovalManager(&mockApprovalManager{approved: true})
 
@@ -359,8 +359,8 @@ func TestHandler_ContentFiltering(t *testing.T) {
 	client := &mockSMTPClient{}
 	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
 	handler := NewHandler(client, engine, HandlerConfig{
-		EndpointName:     "smtp-test",
-		BlockedKeywords:  []string{"password", "secret", "confidential"},
+		EndpointName:    "smtp-test",
+		BlockedKeywords: []string{"password", "secret", "confidential"},
 	})
 
 	tests := []struct {

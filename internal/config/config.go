@@ -158,17 +158,17 @@ func (c *Config) buildPresetRegistry() (map[string]PresetInfo, error) {
 
 // Config is the root configuration structure.
 type Config struct {
-	Server        ServerConfig                `yaml:"server"`
-	Agents        []AgentConfig               `yaml:"agents"`
-	Endpoints     map[string]Endpoint         `yaml:"endpoints"`
-	Notify        NotifyConfig                `yaml:"notify,omitempty"`
-	PresetsDir    string                      `yaml:"presets_dir,omitempty"`    // Directory containing custom preset YAML files
-	CustomPresets map[string]CustomPresetDef  `yaml:"custom_presets,omitempty"` // Inline custom preset definitions
+	Server        ServerConfig               `yaml:"server"`
+	Agents        []AgentConfig              `yaml:"agents"`
+	Endpoints     map[string]Endpoint        `yaml:"endpoints"`
+	Notify        NotifyConfig               `yaml:"notify,omitempty"`
+	PresetsDir    string                     `yaml:"presets_dir,omitempty"`    // Directory containing custom preset YAML files
+	CustomPresets map[string]CustomPresetDef `yaml:"custom_presets,omitempty"` // Inline custom preset definitions
 }
 
 // CustomPresetDef defines a user-created preset in YAML.
 type CustomPresetDef struct {
-	Name         string          `yaml:"name,omitempty"`    // Optional, can use map key
+	Name         string          `yaml:"name,omitempty"` // Optional, can use map key
 	Description  string          `yaml:"description"`
 	Upstream     string          `yaml:"upstream"`
 	AuthType     string          `yaml:"auth_type"`
@@ -193,7 +193,7 @@ type ServerConfig struct {
 
 // LoggingConfig holds logging dashboard settings.
 type LoggingConfig struct {
-	MaxEntries int  `yaml:"max_entries,omitempty"` // Max entries to store (default: 1000)
+	MaxEntries  int  `yaml:"max_entries,omitempty"`  // Max entries to store (default: 1000)
 	StoreBodies bool `yaml:"store_bodies,omitempty"` // Store request bodies (default: false)
 }
 
@@ -223,9 +223,9 @@ type AgentConfig struct {
 
 // Endpoint defines a proxied service.
 type Endpoint struct {
-	Preset       string            `yaml:"preset,omitempty"`       // Preset name (e.g., "todoist", "github")
-	Description  string            `yaml:"description,omitempty"`  // User-friendly description for discovery API
-	Adapter      string            `yaml:"adapter,omitempty"`      // "http" (default), "imap", or "smtp"
+	Preset       string            `yaml:"preset,omitempty"`      // Preset name (e.g., "todoist", "github")
+	Description  string            `yaml:"description,omitempty"` // User-friendly description for discovery API
+	Adapter      string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
 	Upstream     string            `yaml:"upstream,omitempty"`
 	Auth         AuthConfig        `yaml:"auth"`
 	Capabilities map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")

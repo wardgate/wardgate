@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	ErrSendFailed        = errors.New("failed to send email")
-	ErrConnectionFailed  = errors.New("failed to connect to SMTP server")
-	ErrAuthFailed        = errors.New("SMTP authentication failed")
-	ErrRecipientBlocked  = errors.New("recipient not allowed")
-	ErrContentBlocked    = errors.New("email content blocked by filter")
+	ErrSendFailed       = errors.New("failed to send email")
+	ErrConnectionFailed = errors.New("failed to connect to SMTP server")
+	ErrAuthFailed       = errors.New("SMTP authentication failed")
+	ErrRecipientBlocked = errors.New("recipient not allowed")
+	ErrContentBlocked   = errors.New("email content blocked by filter")
 )
 
 // Email represents an email message to be sent.

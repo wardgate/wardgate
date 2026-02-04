@@ -80,9 +80,9 @@ type PoolConfig struct {
 
 // pooledConn wraps a connection with metadata.
 type pooledConn struct {
-	conn       Connection
-	lastUsed   time.Time
-	inUse      bool
+	conn     Connection
+	lastUsed time.Time
+	inUse    bool
 }
 
 // endpointPool manages connections for a single endpoint.
@@ -96,10 +96,10 @@ type endpointPool struct {
 
 // Pool manages IMAP connections across multiple endpoints.
 type Pool struct {
-	dialer      Dialer
-	config      PoolConfig
-	mu          sync.RWMutex
-	pools       map[string]*endpointPool
+	dialer Dialer
+	config PoolConfig
+	mu     sync.RWMutex
+	pools  map[string]*endpointPool
 }
 
 // NewPool creates a new connection pool.

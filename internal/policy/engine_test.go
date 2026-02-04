@@ -152,9 +152,9 @@ func TestEngine_GlobPatternMiddle(t *testing.T) {
 	}{
 		{"POST", "/tasks/123/close", Allow},
 		{"POST", "/tasks/abc/close", Allow},
-		{"POST", "/tasks/close", Deny},           // Missing segment
-		{"POST", "/tasks/123/456/close", Deny},   // Too many segments
-		{"GET", "/tasks/123/close", Deny},        // Wrong method
+		{"POST", "/tasks/close", Deny},         // Missing segment
+		{"POST", "/tasks/123/456/close", Deny}, // Too many segments
+		{"GET", "/tasks/123/close", Deny},      // Wrong method
 	}
 
 	for _, tt := range tests {
