@@ -167,15 +167,8 @@ func main() {
 	// Wrap API endpoints with agent authentication
 	authedAPI := auth.NewAgentAuthMiddleware(cfg.Agents, apiMux)
 
-	// Create root mux - approval endpoints are public (token-protected)
+	// Create root mux
 	rootMux := http.NewServeMux()
-
-	// Register public approval endpoints (no auth required, token in URL provides security)
-	if approvalMgr != nil {
-		rootMux.Handle("/approve/", approvalMgr.Handler())
-		rootMux.Handle("/deny/", approvalMgr.Handler())
-		rootMux.Handle("/status/", approvalMgr.Handler())
-	}
 
 	// Register admin UI if admin key is configured
 	if cfg.Server.AdminKeyEnv != "" {

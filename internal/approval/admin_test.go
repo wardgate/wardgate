@@ -104,7 +104,7 @@ func TestAdminHandler_GetApproval(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, _, _ := m.GetPending()
+	id, _ := m.GetPending()
 
 	req := httptest.NewRequest("GET", "/ui/api/approvals/"+id, nil)
 	req.Header.Set("Authorization", "Bearer secret-admin-key")
@@ -150,9 +150,9 @@ func TestAdminHandler_ApproveByID(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, _, _ := m.GetPending()
+	id, _ := m.GetPending()
 
-	// Approve via admin API (no token needed, uses admin auth)
+	// Approve via admin API
 	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/approve", nil)
 	req.Header.Set("Authorization", "Bearer secret-admin-key")
 	rec := httptest.NewRecorder()
@@ -187,7 +187,7 @@ func TestAdminHandler_DenyByID(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, _, _ := m.GetPending()
+	id, _ := m.GetPending()
 
 	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/deny", nil)
 	req.Header.Set("Authorization", "Bearer secret-admin-key")
@@ -222,8 +222,8 @@ func TestAdminHandler_History(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, token, _ := m.GetPending()
-	m.Approve(id, token)
+	id, _ := m.GetPending()
+	m.ApproveByID(id)
 	<-done
 
 	// Get history via admin API

@@ -328,8 +328,8 @@ notify:
 
 When an `ask` rule matches:
 1. Agent request blocks
-2. Notification sent to Slack/webhook with approve/deny links
-3. Human clicks approve or deny
+2. Notification sent to Slack/webhook with link to dashboard
+3. Human reviews request in Web UI and approves or denies
 4. Request proceeds or returns 403
 
 ## Admin UI & CLI

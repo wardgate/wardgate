@@ -2,8 +2,6 @@ package approval
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -25,23 +23,13 @@ func TestManager_ApproveFlow(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Find the pending request
-	var reqID, token string
-	m.mu.RLock()
-	for id, req := range m.requests {
-		if req.Status == Pending {
-			reqID = id
-			token = req.Token
-			break
-		}
-	}
-	m.mu.RUnlock()
-
-	if reqID == "" {
+	reqID, found := m.GetPending()
+	if !found {
 		t.Fatal("no pending request found")
 	}
 
-	// Approve it
-	if err := m.Approve(reqID, token); err != nil {
+	// Approve it via admin API
+	if err := m.ApproveByID(reqID); err != nil {
 		t.Fatalf("approve failed: %v", err)
 	}
 
@@ -69,18 +57,12 @@ func TestManager_DenyFlow(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	var reqID, token string
-	m.mu.RLock()
-	for id, req := range m.requests {
-		if req.Status == Pending {
-			reqID = id
-			token = req.Token
-			break
-		}
+	reqID, found := m.GetPending()
+	if !found {
+		t.Fatal("no pending request found")
 	}
-	m.mu.RUnlock()
 
-	if err := m.Deny(reqID, token); err != nil {
+	if err := m.DenyByID(reqID); err != nil {
 		t.Fatalf("deny failed: %v", err)
 	}
 
@@ -88,26 +70,6 @@ func TestManager_DenyFlow(t *testing.T) {
 
 	if approved {
 		t.Error("expected approved=false after deny")
-	}
-}
-
-func TestManager_InvalidToken(t *testing.T) {
-	m := NewManager("http://localhost:8080", 5*time.Second)
-
-	go m.RequestApproval(context.Background(), "test-api", "GET", "/tasks", "agent-1")
-	time.Sleep(50 * time.Millisecond)
-
-	var reqID string
-	m.mu.RLock()
-	for id := range m.requests {
-		reqID = id
-		break
-	}
-	m.mu.RUnlock()
-
-	err := m.Approve(reqID, "wrong-token")
-	if err == nil {
-		t.Error("expected error for invalid token")
 	}
 }
 
@@ -121,68 +83,6 @@ func TestManager_Timeout(t *testing.T) {
 	}
 	if approved {
 		t.Error("expected approved=false on timeout")
-	}
-}
-
-func TestManager_Handler_Approve(t *testing.T) {
-	m := NewManager("http://localhost:8080", 5*time.Second)
-
-	go m.RequestApproval(context.Background(), "test-api", "GET", "/tasks", "agent-1")
-	time.Sleep(50 * time.Millisecond)
-
-	var reqID, token string
-	m.mu.RLock()
-	for id, req := range m.requests {
-		reqID = id
-		token = req.Token
-		break
-	}
-	m.mu.RUnlock()
-
-	handler := m.Handler()
-	req := httptest.NewRequest("GET", "/approve/"+reqID+"?token="+token, nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rec.Code)
-	}
-
-	// Check status
-	r, _ := m.Get(reqID)
-	if r.Status != Approved {
-		t.Errorf("expected Approved status, got %v", r.Status)
-	}
-}
-
-func TestManager_Handler_Status(t *testing.T) {
-	m := NewManager("http://localhost:8080", 5*time.Second)
-
-	go m.RequestApproval(context.Background(), "test-api", "GET", "/tasks", "agent-1")
-	time.Sleep(50 * time.Millisecond)
-
-	var reqID string
-	m.mu.RLock()
-	for id := range m.requests {
-		reqID = id
-		break
-	}
-	m.mu.RUnlock()
-
-	handler := m.Handler()
-	req := httptest.NewRequest("GET", "/status/"+reqID, nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rec.Code)
-	}
-
-	body := rec.Body.String()
-	if body == "" {
-		t.Error("expected non-empty body")
 	}
 }
 
@@ -235,7 +135,7 @@ func TestManager_RequestApprovalWithContent(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Find the pending request and verify content
-	id, token, found := m.GetPending()
+	id, found := m.GetPending()
 	if !found {
 		t.Fatal("no pending request found")
 	}
@@ -259,7 +159,7 @@ func TestManager_RequestApprovalWithContent(t *testing.T) {
 	}
 
 	// Approve to unblock goroutine
-	m.Approve(id, token)
+	m.ApproveByID(id)
 	<-done
 }
 
@@ -289,7 +189,7 @@ func TestManager_List(t *testing.T) {
 
 	// Approve one
 	if len(pending) > 0 {
-		m.Approve(pending[0].ID, pending[0].Token)
+		m.ApproveByID(pending[0].ID)
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -317,8 +217,8 @@ func TestManager_History(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, token, _ := m.GetPending()
-	m.Approve(id, token)
+	id, _ := m.GetPending()
+	m.ApproveByID(id)
 	<-done
 
 	// Create and deny a request
@@ -333,8 +233,8 @@ func TestManager_History(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, token, _ = m.GetPending()
-	m.Deny(id, token)
+	id, _ = m.GetPending()
+	m.DenyByID(id)
 	<-done
 
 	// Check history
@@ -372,8 +272,8 @@ func TestManager_HistoryLimit(t *testing.T) {
 		}()
 
 		time.Sleep(30 * time.Millisecond)
-		id, token, _ := m.GetPending()
-		m.Approve(id, token)
+		id, _ := m.GetPending()
+		m.ApproveByID(id)
 		<-done
 	}
 
@@ -400,7 +300,7 @@ func TestManager_GetByID(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	id, _, _ := m.GetPending()
+	id, _ := m.GetPending()
 
 	// Get by ID should return full details including body
 	req, ok := m.Get(id)

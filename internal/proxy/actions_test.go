@@ -183,12 +183,12 @@ func TestProxy_AskAction_Approved(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Find and approve the request
-	reqID, token, found := approvalMgr.GetPending()
+	reqID, found := approvalMgr.GetPending()
 	if !found {
 		t.Fatal("no pending approval request found")
 	}
 
-	if err := approvalMgr.Approve(reqID, token); err != nil {
+	if err := approvalMgr.ApproveByID(reqID); err != nil {
 		t.Fatalf("failed to approve: %v", err)
 	}
 
@@ -233,12 +233,12 @@ func TestProxy_AskAction_Denied(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	reqID, token, found := approvalMgr.GetPending()
+	reqID, found := approvalMgr.GetPending()
 	if !found {
 		t.Fatal("no pending approval request found")
 	}
 
-	if err := approvalMgr.Deny(reqID, token); err != nil {
+	if err := approvalMgr.DenyByID(reqID); err != nil {
 		t.Fatalf("failed to deny: %v", err)
 	}
 

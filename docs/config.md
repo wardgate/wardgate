@@ -431,10 +431,11 @@ Webhook payload:
   "method": "DELETE",
   "path": "/tasks/123",
   "agent_id": "my-agent",
-  "approve_url": "https://wardgate.example.com/approve/abc123?token=xyz",
-  "deny_url": "https://wardgate.example.com/deny/abc123?token=xyz"
+  "dashboard_url": "https://wardgate.example.com/ui/"
 }
 ```
+
+Note: Webhooks are notification-only. Approvals must be done through the Web UI (requires admin key authentication) or CLI.
 
 ### notify.slack
 

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -40,7 +39,6 @@ func (s Status) String() string {
 // Request represents a pending approval request.
 type Request struct {
 	ID          string
-	Token       string // Secret token for approving/denying
 	Endpoint    string
 	Method      string
 	Path        string
@@ -122,13 +120,11 @@ func (m *Manager) RequestApproval(ctx context.Context, endpoint, method, path, a
 // RequestApprovalWithContent creates a new approval request with full content and notifies.
 // It blocks until approved, denied, or timeout.
 func (m *Manager) RequestApprovalWithContent(ctx context.Context, ar ApprovalRequest) (bool, error) {
-	// Generate request ID and token
+	// Generate request ID
 	id := generateID()
-	token := generateToken()
 
 	req := &Request{
 		ID:          id,
-		Token:       token,
 		Endpoint:    ar.Endpoint,
 		Method:      ar.Method,
 		Path:        ar.Path,
@@ -153,17 +149,16 @@ func (m *Manager) RequestApprovalWithContent(ctx context.Context, ar ApprovalReq
 		body = ar.Summary
 	}
 
-	// Send notifications
+	// Send notifications (link to Web UI dashboard)
 	msg := notify.Message{
-		Title:      "Approval Required",
-		Body:       body,
-		RequestID:  id,
-		Endpoint:   ar.Endpoint,
-		Method:     ar.Method,
-		Path:       ar.Path,
-		AgentID:    ar.AgentID,
-		ApproveURL: fmt.Sprintf("%s/approve/%s?token=%s", m.baseURL, id, token),
-		DenyURL:    fmt.Sprintf("%s/deny/%s?token=%s", m.baseURL, id, token),
+		Title:        "Approval Required",
+		Body:         body,
+		RequestID:    id,
+		Endpoint:     ar.Endpoint,
+		Method:       ar.Method,
+		Path:         ar.Path,
+		AgentID:      ar.AgentID,
+		DashboardURL: fmt.Sprintf("%s/ui/", m.baseURL),
 	}
 
 	for _, n := range m.notifiers {
@@ -186,49 +181,7 @@ func (m *Manager) RequestApprovalWithContent(ctx context.Context, ar ApprovalReq
 	}
 }
 
-// Approve marks a request as approved.
-func (m *Manager) Approve(id, token string) error {
-	return m.respond(id, token, Approved)
-}
-
-// Deny marks a request as denied.
-func (m *Manager) Deny(id, token string) error {
-	return m.respond(id, token, Denied)
-}
-
-func (m *Manager) respond(id, token string, status Status) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	req, ok := m.requests[id]
-	if !ok {
-		return fmt.Errorf("request not found")
-	}
-
-	if req.Token != token {
-		return fmt.Errorf("invalid token")
-	}
-
-	if req.Status != Pending {
-		return fmt.Errorf("request already %s", req.Status)
-	}
-
-	if time.Now().After(req.ExpiresAt) {
-		req.Status = Expired
-		return fmt.Errorf("request expired")
-	}
-
-	req.Status = status
-	req.RespondedAt = time.Now()
-	req.done <- status
-
-	// Add to history
-	m.addToHistory(req)
-
-	return nil
-}
-
-// respondByID responds to a request by ID only (for admin API, no token needed).
+// respondByID responds to a request by ID (used by admin API).
 func (m *Manager) respondByID(id string, status Status) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -312,16 +265,16 @@ func (m *Manager) Get(id string) (*Request, bool) {
 	return req, ok
 }
 
-// GetPending returns a pending request's ID and token (for testing).
-func (m *Manager) GetPending() (id, token string, found bool) {
+// GetPending returns a pending request's ID (for testing).
+func (m *Manager) GetPending() (id string, found bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for id, req := range m.requests {
 		if req.Status == Pending {
-			return id, req.Token, true
+			return id, true
 		}
 	}
-	return "", "", false
+	return "", false
 }
 
 // Cleanup removes expired requests older than the given duration.
@@ -337,72 +290,8 @@ func (m *Manager) Cleanup(maxAge time.Duration) {
 	}
 }
 
-// Handler returns an HTTP handler for approval endpoints.
-func (m *Manager) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/approve/", m.handleApprove)
-	mux.HandleFunc("/deny/", m.handleDeny)
-	mux.HandleFunc("/status/", m.handleStatus)
-	return mux
-}
-
-func (m *Manager) handleApprove(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/approve/"):]
-	token := r.URL.Query().Get("token")
-
-	if err := m.Approve(id, token); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Approved</title></head>
-<body style="font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f9f0;">
-<div style="text-align: center; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-<h1 style="color: #22c55e; margin-bottom: 0.5rem;">Approved</h1>
-<p style="color: #666;">Request %s has been approved.</p>
-</div></body></html>`, id)
-}
-
-func (m *Manager) handleDeny(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/deny/"):]
-	token := r.URL.Query().Get("token")
-
-	if err := m.Deny(id, token); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Denied</title></head>
-<body style="font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #fef2f2;">
-<div style="text-align: center; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-<h1 style="color: #ef4444; margin-bottom: 0.5rem;">Denied</h1>
-<p style="color: #666;">Request %s has been denied.</p>
-</div></body></html>`, id)
-}
-
-func (m *Manager) handleStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/status/"):]
-
-	req, ok := m.Get(id)
-	if !ok {
-		http.Error(w, "request not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"id":"%s","status":"%s"}`, req.ID, req.Status)
-}
-
 func generateID() string {
 	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func generateToken() string {
-	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }

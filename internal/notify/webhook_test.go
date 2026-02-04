@@ -75,15 +75,14 @@ func TestSlackChannel_Send(t *testing.T) {
 	ch := NewSlackChannel(server.URL)
 
 	msg := Message{
-		Title:      "Approval Required",
-		Body:       "Agent wants to POST /tasks",
-		RequestID:  "req-123",
-		Endpoint:   "test-api",
-		Method:     "POST",
-		Path:       "/tasks",
-		AgentID:    "agent-1",
-		ApproveURL: "http://localhost/approve/123",
-		DenyURL:    "http://localhost/deny/123",
+		Title:        "Approval Required",
+		Body:         "Agent wants to POST /tasks",
+		RequestID:    "req-123",
+		Endpoint:     "test-api",
+		Method:       "POST",
+		Path:         "/tasks",
+		AgentID:      "agent-1",
+		DashboardURL: "http://localhost/ui/",
 	}
 
 	err := ch.Send(context.Background(), msg)

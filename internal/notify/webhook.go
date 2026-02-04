@@ -16,15 +16,14 @@ type Channel interface {
 
 // Message represents a notification message.
 type Message struct {
-	Title      string `json:"title"`
-	Body       string `json:"body"`
-	RequestID  string `json:"request_id"`
-	Endpoint   string `json:"endpoint"`
-	Method     string `json:"method"`
-	Path       string `json:"path"`
-	AgentID    string `json:"agent_id,omitempty"`
-	ApproveURL string `json:"approve_url,omitempty"`
-	DenyURL    string `json:"deny_url,omitempty"`
+	Title        string `json:"title"`
+	Body         string `json:"body"`
+	RequestID    string `json:"request_id"`
+	Endpoint     string `json:"endpoint"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	AgentID      string `json:"agent_id,omitempty"`
+	DashboardURL string `json:"dashboard_url,omitempty"` // Link to Web UI for approval
 }
 
 // WebhookChannel sends notifications via HTTP webhook.
@@ -93,7 +92,7 @@ func NewSlackChannel(webhookURL string) *SlackChannel {
 
 // Send sends a notification to Slack.
 func (s *SlackChannel) Send(ctx context.Context, msg Message) error {
-	// Build Slack message with blocks for approve/deny buttons
+	// Build Slack message with blocks
 	payload := map[string]interface{}{
 		"text": fmt.Sprintf("%s: %s", msg.Title, msg.Body),
 		"blocks": []map[string]interface{}{
@@ -123,28 +122,18 @@ func (s *SlackChannel) Send(ctx context.Context, msg Message) error {
 		},
 	}
 
-	// Add action buttons if URLs provided
-	if msg.ApproveURL != "" || msg.DenyURL != "" {
-		buttons := []map[string]interface{}{}
-		if msg.ApproveURL != "" {
-			buttons = append(buttons, map[string]interface{}{
-				"type": "button",
-				"text": map[string]string{"type": "plain_text", "text": "Approve"},
-				"style": "primary",
-				"url":   msg.ApproveURL,
-			})
-		}
-		if msg.DenyURL != "" {
-			buttons = append(buttons, map[string]interface{}{
-				"type": "button",
-				"text": map[string]string{"type": "plain_text", "text": "Deny"},
-				"style": "danger",
-				"url":   msg.DenyURL,
-			})
-		}
+	// Add "View in Dashboard" button if URL provided
+	if msg.DashboardURL != "" {
 		payload["blocks"] = append(payload["blocks"].([]map[string]interface{}), map[string]interface{}{
-			"type":     "actions",
-			"elements": buttons,
+			"type": "actions",
+			"elements": []map[string]interface{}{
+				{
+					"type":  "button",
+					"text":  map[string]string{"type": "plain_text", "text": "Review in Dashboard"},
+					"style": "primary",
+					"url":   msg.DashboardURL,
+				},
+			},
 		})
 	}
 
