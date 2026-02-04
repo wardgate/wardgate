@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/wardgate/wardgate/internal/audit"
 )
 
 func TestAdminHandler_Unauthorized(t *testing.T) {
@@ -277,5 +279,152 @@ func TestAdminHandler_ApproveNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestAdminHandler_LogsEndpoint(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	store := audit.NewStore(100)
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetLogStore(store)
+
+	// Add some log entries
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{RequestID: "req1", Endpoint: "todoist", Method: "GET", Path: "/tasks", Decision: "allow"},
+		Timestamp: time.Now(),
+	})
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{RequestID: "req2", Endpoint: "github", Method: "POST", Path: "/issues", Decision: "allow"},
+		Timestamp: time.Now(),
+	})
+
+	req := httptest.NewRequest("GET", "/ui/api/logs", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Logs []audit.StoredEntry `json:"logs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(response.Logs) != 2 {
+		t.Errorf("expected 2 logs, got %d", len(response.Logs))
+	}
+}
+
+func TestAdminHandler_LogsWithFilters(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	store := audit.NewStore(100)
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetLogStore(store)
+
+	// Add log entries
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{RequestID: "req1", Endpoint: "todoist", AgentID: "agent1", Decision: "allow"},
+		Timestamp: time.Now(),
+	})
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{RequestID: "req2", Endpoint: "github", AgentID: "agent1", Decision: "deny"},
+		Timestamp: time.Now(),
+	})
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{RequestID: "req3", Endpoint: "todoist", AgentID: "agent2", Decision: "allow"},
+		Timestamp: time.Now(),
+	})
+
+	// Filter by endpoint
+	req := httptest.NewRequest("GET", "/ui/api/logs?endpoint=todoist", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var response struct {
+		Logs []audit.StoredEntry `json:"logs"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &response)
+
+	if len(response.Logs) != 2 {
+		t.Errorf("expected 2 todoist logs, got %d", len(response.Logs))
+	}
+
+	// Filter by decision
+	req = httptest.NewRequest("GET", "/ui/api/logs?decision=deny", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	json.Unmarshal(rec.Body.Bytes(), &response)
+
+	if len(response.Logs) != 1 {
+		t.Errorf("expected 1 deny log, got %d", len(response.Logs))
+	}
+}
+
+func TestAdminHandler_LogsFiltersMetadata(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	store := audit.NewStore(100)
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetLogStore(store)
+
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{Endpoint: "todoist", AgentID: "agent1"},
+		Timestamp: time.Now(),
+	})
+	store.Add(audit.StoredEntry{
+		Entry:     audit.Entry{Endpoint: "github", AgentID: "agent2"},
+		Timestamp: time.Now(),
+	})
+
+	req := httptest.NewRequest("GET", "/ui/api/logs/filters", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	var response struct {
+		Endpoints []string `json:"endpoints"`
+		Agents    []string `json:"agents"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &response)
+
+	if len(response.Endpoints) != 2 {
+		t.Errorf("expected 2 endpoints, got %d", len(response.Endpoints))
+	}
+	if len(response.Agents) != 2 {
+		t.Errorf("expected 2 agents, got %d", len(response.Agents))
+	}
+}
+
+func TestAdminHandler_LogsNoStore(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	h := NewAdminHandler(m, "secret-admin-key")
+	// No log store set
+
+	req := httptest.NewRequest("GET", "/ui/api/logs", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	var response struct {
+		Logs []audit.StoredEntry `json:"logs"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &response)
+
+	if len(response.Logs) != 0 {
+		t.Errorf("expected 0 logs when no store, got %d", len(response.Logs))
 	}
 }

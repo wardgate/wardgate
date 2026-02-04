@@ -2,6 +2,9 @@ server:
   listen: ":8080"
   base_url: "http://localhost:8080"  # Base URL for links in notifications
   admin_key_env: WARDGATE_ADMIN_KEY  # Env var for admin key (enables Web UI at /ui/)
+  logging:
+    max_entries: 1000      # Max log entries to keep in memory for dashboard (default: 1000)
+    store_bodies: false    # Store request bodies in logs (default: false, for privacy)
 
 agents:
   - id: agent-name

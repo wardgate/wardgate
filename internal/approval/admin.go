@@ -3,8 +3,11 @@ package approval
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wardgate/wardgate/internal/audit"
 )
 
 // RequestView is the JSON representation of a Request for the admin API.
@@ -51,6 +54,7 @@ func toView(r *Request) RequestView {
 type AdminHandler struct {
 	manager  *Manager
 	adminKey string
+	logStore *audit.Store
 }
 
 // NewAdminHandler creates a new admin handler.
@@ -59,6 +63,11 @@ func NewAdminHandler(manager *Manager, adminKey string) *AdminHandler {
 		manager:  manager,
 		adminKey: adminKey,
 	}
+}
+
+// SetLogStore sets the log store for the logs API.
+func (h *AdminHandler) SetLogStore(store *audit.Store) {
+	h.logStore = store
 }
 
 // ServeHTTP handles admin API requests.
@@ -77,6 +86,10 @@ func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleList(w, r)
 	case path == "/ui/api/history" && r.Method == http.MethodGet:
 		h.handleHistory(w, r)
+	case path == "/ui/api/logs" && r.Method == http.MethodGet:
+		h.handleLogs(w, r)
+	case path == "/ui/api/logs/filters" && r.Method == http.MethodGet:
+		h.handleLogsFilters(w, r)
 	case strings.HasPrefix(path, "/ui/api/approvals/") && strings.HasSuffix(path, "/approve") && r.Method == http.MethodPost:
 		h.handleApprove(w, r)
 	case strings.HasPrefix(path, "/ui/api/approvals/") && strings.HasSuffix(path, "/deny") && r.Method == http.MethodPost:
@@ -185,5 +198,60 @@ func (h *AdminHandler) handleDeny(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "denied",
+	})
+}
+
+func (h *AdminHandler) handleLogs(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	params := audit.QueryParams{
+		Endpoint: query.Get("endpoint"),
+		AgentID:  query.Get("agent"),
+		Decision: query.Get("decision"),
+		Method:   query.Get("method"),
+		Limit:    50,
+	}
+
+	if limitStr := query.Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			params.Limit = limit
+		}
+	}
+
+	if beforeStr := query.Get("before"); beforeStr != "" {
+		if before, err := time.Parse(time.RFC3339, beforeStr); err == nil {
+			params.Before = before
+		}
+	}
+
+	var logs []audit.StoredEntry
+	if h.logStore != nil {
+		logs = h.logStore.Query(params)
+	} else {
+		logs = []audit.StoredEntry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"logs": logs,
+	})
+}
+
+func (h *AdminHandler) handleLogsFilters(w http.ResponseWriter, r *http.Request) {
+	var endpoints, agents []string
+
+	if h.logStore != nil {
+		endpoints = h.logStore.GetEndpoints()
+		agents = h.logStore.GetAgents()
+	} else {
+		endpoints = []string{}
+		agents = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"endpoints": endpoints,
+		"agents":    agents,
+		"decisions": []string{"allow", "deny", "rate_limited", "error"},
 	})
 }

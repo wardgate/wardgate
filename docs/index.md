@@ -42,6 +42,11 @@ Agents can query `GET /endpoints` to discover available endpoints. See the [READ
 
 Wardgate includes a web dashboard (`/ui/`) and CLI for managing approval requests. Configure `admin_key_env` in your server settings to enable. See the [README](../README.md#admin-ui--cli) for details.
 
+The dashboard includes:
+- **Pending** - Requests awaiting approval
+- **History** - Past approval decisions
+- **Logs** - Recent request activity with filtering
+
 ## Quick Links
 
 - [GitHub Repository](https://github.com/wardgate/wardgate)

@@ -408,6 +408,26 @@ wardgate approvals monitor
 
 The Web UI and CLI show full request content for email approvals, allowing you to review the recipient, subject, and body before approving.
 
+### Logging Dashboard
+
+The Web UI includes a **Logs** tab that shows recent request activity. Logs are stored in memory (ring buffer) and can be filtered by:
+
+- Endpoint
+- Agent
+- Decision (allow/deny/rate_limited/error)
+- HTTP method
+
+Configure logging in your `config.yaml`:
+
+```yaml
+server:
+  logging:
+    max_entries: 1000      # Max entries to keep (default: 1000)
+    store_bodies: false    # Store request bodies (default: false)
+```
+
+**Note:** Logs are stored in memory only and are lost on restart. For persistent logging, configure your log aggregator to consume stdout.
+
 ## IMAP Support
 
 Wardgate can proxy IMAP servers via a REST API, letting your agents read email without direct IMAP access:

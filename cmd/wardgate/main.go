@@ -63,6 +63,15 @@ func main() {
 	vault := auth.NewEnvVault()
 	auditLog := audit.New(os.Stdout)
 
+	// Setup log store for dashboard
+	logStoreCapacity := 1000
+	if cfg.Server.Logging.MaxEntries > 0 {
+		logStoreCapacity = cfg.Server.Logging.MaxEntries
+	}
+	logStore := audit.NewStore(logStoreCapacity)
+	auditLog.SetStore(logStore)
+	auditLog.SetStoreBodies(cfg.Server.Logging.StoreBodies)
+
 	// Setup approval manager if notifications are configured
 	var approvalMgr *approval.Manager
 	if cfg.Notify.Slack != nil || cfg.Notify.Webhook != nil {
@@ -203,6 +212,7 @@ func main() {
 				approvalMgr = approval.NewManager(baseURL, timeout)
 			}
 			adminHandler := approval.NewAdminHandler(approvalMgr, adminKey)
+			adminHandler.SetLogStore(logStore)
 			uiHandler := approval.NewUIHandler(adminHandler)
 			rootMux.Handle("/ui/", uiHandler)
 			log.Printf("Admin UI enabled at /ui/")

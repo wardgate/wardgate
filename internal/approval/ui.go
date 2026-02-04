@@ -39,7 +39,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wardgate - Approval Dashboard</title>
+  <title>Wardgate - Dashboard</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -73,7 +73,7 @@ const dashboardHTML = `<!DOCTYPE html>
     .login-container h2 { margin-bottom: 1.5rem; text-align: center; }
     .form-group { margin-bottom: 1rem; }
     .form-group label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: #94a3b8; }
-    .form-group input {
+    .form-group input, .form-group select {
       width: 100%;
       padding: 0.75rem;
       background: #0f172a;
@@ -82,7 +82,7 @@ const dashboardHTML = `<!DOCTYPE html>
       color: #e2e8f0;
       font-size: 1rem;
     }
-    .form-group input:focus { outline: none; border-color: #3b82f6; }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: #3b82f6; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -153,6 +153,12 @@ const dashboardHTML = `<!DOCTYPE html>
     .status-approved { background: #22c55e20; color: #22c55e; }
     .status-denied { background: #ef444420; color: #ef4444; }
     .status-expired { background: #64748b20; color: #64748b; }
+    
+    .decision { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .decision-allow { background: #22c55e20; color: #22c55e; }
+    .decision-deny { background: #ef444420; color: #ef4444; }
+    .decision-rate_limited { background: #f59e0b20; color: #f59e0b; }
+    .decision-error { background: #64748b20; color: #64748b; }
     
     /* Content preview */
     .content-preview {
@@ -233,6 +239,82 @@ const dashboardHTML = `<!DOCTYPE html>
     /* Expiry timer */
     .expiry { font-size: 0.75rem; color: #f59e0b; }
     .expiry.soon { color: #ef4444; }
+    
+    /* Logs table */
+    .logs-filters {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .logs-filters .form-group {
+      margin-bottom: 0;
+      min-width: 150px;
+    }
+    .logs-filters select {
+      padding: 0.5rem;
+      font-size: 0.875rem;
+    }
+    .logs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .logs-table th {
+      text-align: left;
+      padding: 0.75rem;
+      background: #0f172a;
+      color: #94a3b8;
+      font-weight: 500;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .logs-table td {
+      padding: 0.75rem;
+      border-top: 1px solid #334155;
+      vertical-align: top;
+    }
+    .logs-table tr:hover { background: #1e293b40; }
+    .log-path {
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #94a3b8;
+    }
+    .log-time { color: #64748b; font-size: 0.8125rem; white-space: nowrap; }
+    .log-duration { color: #64748b; font-size: 0.8125rem; }
+    .log-expand {
+      background: transparent;
+      border: none;
+      color: #3b82f6;
+      cursor: pointer;
+      font-size: 0.8125rem;
+    }
+    .log-expand:hover { text-decoration: underline; }
+    .log-body {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: #0f172a;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+      cursor: pointer;
+    }
+    .checkbox-label input { width: auto; }
   </style>
 </head>
 <body>
@@ -271,6 +353,7 @@ const dashboardHTML = `<!DOCTYPE html>
       <div class="tabs">
         <button class="tab active" data-tab="pending">Pending</button>
         <button class="tab" data-tab="history">History</button>
+        <button class="tab" data-tab="logs">Logs</button>
       </div>
       
       <div id="pending-tab">
@@ -279,6 +362,67 @@ const dashboardHTML = `<!DOCTYPE html>
       
       <div id="history-tab" style="display: none;">
         <div id="history-list"></div>
+      </div>
+      
+      <div id="logs-tab" style="display: none;">
+        <div class="logs-filters">
+          <div class="form-group">
+            <label>Endpoint</label>
+            <select id="filter-endpoint">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Agent</label>
+            <select id="filter-agent">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Decision</label>
+            <select id="filter-decision">
+              <option value="">All</option>
+              <option value="allow">Allow</option>
+              <option value="deny">Deny</option>
+              <option value="rate_limited">Rate Limited</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Method</label>
+            <select id="filter-method">
+              <option value="">All</option>
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="loadLogs()">Refresh</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <table class="logs-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Endpoint</th>
+                  <th>Method</th>
+                  <th>Path</th>
+                  <th>Agent</th>
+                  <th>Decision</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="logs-list"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="logs-empty" class="empty-state" style="display: none;">
+          <p>No logs found</p>
+        </div>
       </div>
     </div>
   </div>
@@ -297,9 +441,16 @@ const dashboardHTML = `<!DOCTYPE html>
     const loginError = document.getElementById('login-error');
     const pendingList = document.getElementById('pending-list');
     const historyList = document.getElementById('history-list');
+    const logsList = document.getElementById('logs-list');
+    const logsEmpty = document.getElementById('logs-empty');
     const tabs = document.querySelectorAll('.tab');
     const pendingTab = document.getElementById('pending-tab');
     const historyTab = document.getElementById('history-tab');
+    const logsTab = document.getElementById('logs-tab');
+    const filterEndpoint = document.getElementById('filter-endpoint');
+    const filterAgent = document.getElementById('filter-agent');
+    const filterDecision = document.getElementById('filter-decision');
+    const filterMethod = document.getElementById('filter-method');
     
     // API calls
     async function api(path, method = 'GET') {
@@ -463,18 +614,99 @@ const dashboardHTML = `<!DOCTYPE html>
     window.approve = approve;
     window.deny = deny;
     
+    // Logs functions
+    async function loadLogsFilters() {
+      try {
+        const data = await api('/logs/filters');
+        
+        // Populate endpoint filter
+        filterEndpoint.innerHTML = '<option value="">All</option>';
+        (data.endpoints || []).forEach(ep => {
+          filterEndpoint.innerHTML += '<option value="' + escapeHtml(ep) + '">' + escapeHtml(ep) + '</option>';
+        });
+        
+        // Populate agent filter
+        filterAgent.innerHTML = '<option value="">All</option>';
+        (data.agents || []).forEach(agent => {
+          filterAgent.innerHTML += '<option value="' + escapeHtml(agent) + '">' + escapeHtml(agent) + '</option>';
+        });
+      } catch (err) {
+        console.error('Failed to load log filters:', err);
+      }
+    }
+    
+    async function loadLogs() {
+      try {
+        let url = '/logs?limit=100';
+        if (filterEndpoint.value) url += '&endpoint=' + encodeURIComponent(filterEndpoint.value);
+        if (filterAgent.value) url += '&agent=' + encodeURIComponent(filterAgent.value);
+        if (filterDecision.value) url += '&decision=' + encodeURIComponent(filterDecision.value);
+        if (filterMethod.value) url += '&method=' + encodeURIComponent(filterMethod.value);
+        
+        const data = await api(url);
+        const logs = data.logs || [];
+        
+        if (logs.length === 0) {
+          logsList.innerHTML = '';
+          logsEmpty.style.display = 'block';
+          return;
+        }
+        
+        logsEmpty.style.display = 'none';
+        logsList.innerHTML = logs.map(renderLogRow).join('');
+      } catch (err) {
+        logsList.innerHTML = '';
+        logsEmpty.innerHTML = '<p>Error loading logs</p>';
+        logsEmpty.style.display = 'block';
+      }
+    }
+    
+    function renderLogRow(log) {
+      const methodClass = 'method-' + log.method;
+      const decisionClass = 'decision-' + log.decision;
+      const time = new Date(log.timestamp).toLocaleString();
+      
+      let bodyHtml = '';
+      if (log.request_body) {
+        let bodyDisplay = log.request_body;
+        try {
+          bodyDisplay = JSON.stringify(JSON.parse(log.request_body), null, 2);
+        } catch {}
+        bodyHtml = '<tr class="log-body-row" style="display:none;"><td colspan="8"><div class="log-body">' + escapeHtml(bodyDisplay) + '</div></td></tr>';
+      }
+      
+      return '<tr>' +
+        '<td class="log-time">' + time + '</td>' +
+        '<td>' + escapeHtml(log.endpoint) + '</td>' +
+        '<td><span class="method ' + methodClass + '">' + log.method + '</span></td>' +
+        '<td class="log-path" title="' + escapeHtml(log.path) + '">' + escapeHtml(log.path) + '</td>' +
+        '<td>' + escapeHtml(log.agent || '-') + '</td>' +
+        '<td><span class="decision ' + decisionClass + '">' + log.decision + '</span></td>' +
+        '<td class="log-duration">' + (log.duration_ms || 0) + 'ms</td>' +
+        '<td>' + (log.upstream_status || '-') + '</td>' +
+      '</tr>' + bodyHtml;
+    }
+    
+    window.loadLogs = loadLogs;
+    
     // Tab switching
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         tabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
+        pendingTab.style.display = 'none';
+        historyTab.style.display = 'none';
+        logsTab.style.display = 'none';
+        
         if (tab.dataset.tab === 'pending') {
           pendingTab.style.display = 'block';
-          historyTab.style.display = 'none';
-        } else {
-          pendingTab.style.display = 'none';
+        } else if (tab.dataset.tab === 'history') {
           historyTab.style.display = 'block';
           loadHistory();
+        } else if (tab.dataset.tab === 'logs') {
+          logsTab.style.display = 'block';
+          loadLogsFilters();
+          loadLogs();
         }
       });
     });

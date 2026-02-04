@@ -237,12 +237,17 @@ Server configuration.
 | `listen` | string | `:8080` | Address and port to listen on |
 | `base_url` | string | | Base URL for links in notifications |
 | `admin_key_env` | string | | Env var for admin key (enables Web UI at `/ui/` and CLI) |
+| `logging.max_entries` | int | `1000` | Max log entries to keep in memory for dashboard |
+| `logging.store_bodies` | bool | `false` | Store request bodies in logs (privacy consideration) |
 
 ```yaml
 server:
   listen: ":8080"                            # Listen on all interfaces, port 8080
   base_url: "https://wardgate.example.com"   # For links in notifications
   admin_key_env: WARDGATE_ADMIN_KEY          # Enables admin Web UI and CLI
+  logging:
+    max_entries: 1000                        # Keep last 1000 requests in memory
+    store_bodies: false                      # Don't store request bodies by default
 ```
 
 #### Admin UI and CLI
