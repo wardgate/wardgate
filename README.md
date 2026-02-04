@@ -6,7 +6,7 @@
   <a href="https://github.com/wardgate/wardgate/actions/workflows/ci.yml"><img src="https://github.com/wardgate/wardgate/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://goreportcard.com/report/github.com/wardgate/wardgate"><img src="https://goreportcard.com/badge/github.com/wardgate/wardgate" alt="Go Report Card"></a>
   <img src="https://img.shields.io/badge/go-1.22-blue" alt="Go Version">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="License"></a>
 </p>
 
 # Wardgate - AI Agent Security Gateway
@@ -75,7 +75,7 @@ Instead of giving your agent a Todoist API key:
 todoist_api_key: "abc123..."
 ```
 
-You configure Wardgate using a **preset** (easiest):
+You configure Wardgate using a **[preset](docs/presets.md)** (easiest):
 
 ```yaml
 # Wardgate config - using preset (recommended)
@@ -152,6 +152,7 @@ The gateway:
 
 - [Security Architecture](docs/architecture.md) - How Wardgate protects your credentials
 - [Policy System](docs/policies.md) - Writing and configuring rules
+- [Presets Reference](docs/presets.md) - Built-in presets and capabilities
 - [Configuration Reference](docs/config.md) - All configuration options
 - [Deployment Guide](docs/deployment.md) - Docker, Caddy, and production setup
 
