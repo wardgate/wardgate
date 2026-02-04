@@ -55,14 +55,14 @@ WARDGATE_CRED_IMAP=user@gmail.com:app-password
 WARDGATE_CRED_SMTP=user@gmail.com:app-password
 ```
 
-### Approval URL Configuration
+### Base URL Configuration
 
-For approval workflows to work correctly, set `approval_url` in your config to the public URL where Wardgate is accessible:
+For notifications to link correctly to the dashboard, set `base_url` in your config to the internal or public URL where Wardgate is accessible for you:
 
 ```yaml
 server:
   listen: ":8080"
-  approval_url: "https://wardgate.example.com"
+  base_url: "https://wardgate.example.com"
 ```
 
 ## Deployment Options
@@ -116,7 +116,7 @@ go build -o wardgate ./cmd/wardgate
 
 ### Configuration
 
-- [ ] Set `approval_url` to your public URL
+- [ ] Set `base_url` to your internal or public URL where Wardgate is accessible for you
 - [ ] Configure notification webhooks for approval workflows
 - [ ] Review and tune rate limits
 - [ ] Set appropriate timeouts
@@ -184,9 +184,9 @@ Common issues:
 - Check TLS settings match your provider
 - For Gmail, use App Passwords (not regular password)
 
-### Approval links not working
+### Dashboard links not working
 
-- Ensure `approval_url` is set to your public URL
+- Ensure `base_url` is set to your internal or public URL where Wardgate is accessible for you
 - Verify Caddy is running and accessible
 - Check firewall rules
 

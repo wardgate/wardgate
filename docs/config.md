@@ -191,7 +191,7 @@ When multiple presets exist with the same name:
 # config.yaml
 server:
   listen: ":8080"
-  approval_url: "https://wardgate.example.com"
+  base_url: "https://wardgate.example.com"
 
 agents:
   - id: my-agent
@@ -235,14 +235,14 @@ Server configuration.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `listen` | string | `:8080` | Address and port to listen on |
-| `approval_url` | string | | Base URL for approval links in notifications |
+| `base_url` | string | | Base URL for links in notifications |
 | `admin_key_env` | string | | Env var for admin key (enables Web UI at `/ui/` and CLI) |
 
 ```yaml
 server:
-  listen: ":8080"                              # Listen on all interfaces, port 8080
-  approval_url: "https://wardgate.example.com" # For approval links
-  admin_key_env: WARDGATE_ADMIN_KEY            # Enables admin Web UI and CLI
+  listen: ":8080"                            # Listen on all interfaces, port 8080
+  base_url: "https://wardgate.example.com"   # For links in notifications
+  admin_key_env: WARDGATE_ADMIN_KEY          # Enables admin Web UI and CLI
 ```
 
 #### Admin UI and CLI

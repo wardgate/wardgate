@@ -72,7 +72,7 @@ func main() {
 			}
 		}
 
-		baseURL := cfg.Server.ApprovalURL
+		baseURL := cfg.Server.BaseURL
 		if baseURL == "" {
 			baseURL = "http://localhost" + cfg.Server.Listen
 		}
@@ -182,7 +182,7 @@ func main() {
 						timeout = d
 					}
 				}
-				baseURL := cfg.Server.ApprovalURL
+				baseURL := cfg.Server.BaseURL
 				if baseURL == "" {
 					baseURL = "http://localhost" + cfg.Server.Listen
 				}

@@ -186,7 +186,7 @@ type CapabilityDef struct {
 // ServerConfig holds server settings.
 type ServerConfig struct {
 	Listen      string `yaml:"listen"`
-	ApprovalURL string `yaml:"approval_url,omitempty"` // Base URL for approval links
+	BaseURL     string `yaml:"base_url,omitempty"`      // Base URL for links in notifications
 	AdminKeyEnv string `yaml:"admin_key_env,omitempty"` // Env var for admin key (for web UI/CLI)
 }
 
