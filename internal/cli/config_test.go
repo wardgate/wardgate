@@ -1,9 +1,16 @@
 package cli
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 
@@ -55,6 +62,59 @@ key_env: WARDGATE_AGENT_KEY
 	}
 	if key != "test-key-from-env" {
 		t.Errorf("expected key from key_env, got %q", key)
+	}
+}
+
+func TestLoadRootCAs_Empty(t *testing.T) {
+	cfg := &Config{}
+	pool, err := cfg.LoadRootCAs()
+	if err != nil {
+		t.Fatalf("LoadRootCAs: %v", err)
+	}
+	if pool != nil {
+		t.Error("expected nil pool when ca_file empty")
+	}
+}
+
+func TestLoadRootCAs_NoFile(t *testing.T) {
+	cfg := &Config{CAFile: "/nonexistent/ca.pem"}
+	_, err := cfg.LoadRootCAs()
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadRootCAs_Valid(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test CA"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageCertSign,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("CreateCertificate: %v", err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caPath, certPEM, 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg := &Config{CAFile: caPath}
+	pool, err := cfg.LoadRootCAs()
+	if err != nil {
+		t.Fatalf("LoadRootCAs: %v", err)
+	}
+	if pool == nil {
+		t.Error("expected non-nil pool")
 	}
 }
 

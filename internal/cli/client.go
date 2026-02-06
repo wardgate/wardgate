@@ -2,6 +2,7 @@ package cli
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,8 +11,9 @@ import (
 
 // ClientOptions configures the HTTP client.
 type ClientOptions struct {
-	FollowRedirects bool // -L: follow same-host redirects only
-	InsecureSkipVerify bool // -k: skip TLS verification
+	FollowRedirects    bool         // -L: follow same-host redirects only
+	InsecureSkipVerify bool         // -k: skip TLS verification
+	RootCAs            *x509.CertPool // Custom CA pool (e.g. from ca_file config)
 }
 
 // Client is an HTTP client restricted to the configured wardgate server.
@@ -39,6 +41,9 @@ func NewClient(serverURL, key string, opts ClientOptions) (*Client, error) {
 	tlsConfig := &tls.Config{}
 	if opts.InsecureSkipVerify {
 		tlsConfig.InsecureSkipVerify = true
+	}
+	if opts.RootCAs != nil {
+		tlsConfig.RootCAs = opts.RootCAs
 	}
 
 	transport := &http.Transport{

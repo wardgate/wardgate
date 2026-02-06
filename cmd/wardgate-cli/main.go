@@ -96,7 +96,13 @@ func runEndpoints(configPath, envPath string) {
 		os.Exit(1)
 	}
 
-	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{})
+	rootCAs, err := cfg.LoadRootCAs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{RootCAs: rootCAs})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -159,9 +165,16 @@ func runRequest(configPath, envPath string, opts runRequestOpts) {
 		os.Exit(1)
 	}
 
+	rootCAs, err := cfg.LoadRootCAs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{
 		FollowRedirects:    opts.followRedirects,
 		InsecureSkipVerify: opts.insecure,
+		RootCAs:           rootCAs,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -61,6 +61,16 @@ server: http://wardgate:8080
 key: "your-agent-key"
 ```
 
+**Internal Wardgate with custom CA:** If Wardgate uses HTTPS with a custom/internal CA, add `ca_file` so the CLI verifies the server cert:
+
+```yaml
+server: https://wardgate.internal:443
+key_env: WARDGATE_AGENT_KEY
+ca_file: /etc/wardgate-cli/ca.pem
+```
+
+Mount the CA cert (PEM) at that path. The CLI adds it to the system trust store for TLS verification. Alternatively, add the CA to the container's system store (e.g. Alpine: put PEM in `/usr/local/share/ca-certificates/` and run `update-ca-certificates`) and omit `ca_file`.
+
 ### 3. Provide the Key
 
 If using `key_env`, set that variable in the agent's environment. Options:
@@ -101,6 +111,7 @@ wardgate-cli -X POST -H "Content-Type: application/json" -d '{"content":"Buy mil
 | `-v`, `--verbose` | Verbose output |
 | `-L`, `--location` | Follow redirects (same-host only) |
 | `-k`, `--insecure` | Skip TLS verification (for self-signed certs) |
+| `ca_file` (config) | Path to custom CA cert (PEM) for internal Wardgate with custom CA |
 | `-w`, `--write-out` | Write-out format (e.g. `%{http_code}`) |
 | `-env` | Path to .env file for key_env (default: .env) |
 
