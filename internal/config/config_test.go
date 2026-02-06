@@ -204,7 +204,7 @@ endpoints:
 	}
 
 	// Should have preset defaults applied
-	if ep.Upstream != "https://api.todoist.com/rest/v2" {
+	if ep.Upstream != "https://api.todoist.com/api/v1" {
 		t.Errorf("expected Todoist upstream, got %s", ep.Upstream)
 	}
 	if ep.Auth.Type != "bearer" {
