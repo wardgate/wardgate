@@ -34,6 +34,10 @@ See the **[Presets Reference](presets.md)** for all capabilities and examples.
 - [Policy System](policies.md) - Writing and configuring rules
 - [Deployment Guide](deployment.md) - Docker, Caddy, and production setup
 
+## Sensitive Data Filtering
+
+Wardgate automatically blocks OTP codes, verification links, and API keys in responses by default. This prevents prompt injection attacks from extracting 2FA codes or credentials. Configure per-endpoint in your config. See [Configuration Reference](config.md#sensitive-data-filtering) for details.
+
 ## Endpoint Discovery API
 
 Agents can query `GET /endpoints` to discover available endpoints. See the [README](../README.md#endpoint-discovery-api) for details.

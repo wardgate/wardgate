@@ -158,12 +158,13 @@ func (c *Config) buildPresetRegistry() (map[string]PresetInfo, error) {
 
 // Config is the root configuration structure.
 type Config struct {
-	Server        ServerConfig               `yaml:"server"`
-	Agents        []AgentConfig              `yaml:"agents"`
-	Endpoints     map[string]Endpoint        `yaml:"endpoints"`
-	Notify        NotifyConfig               `yaml:"notify,omitempty"`
-	PresetsDir    string                     `yaml:"presets_dir,omitempty"`    // Directory containing custom preset YAML files
-	CustomPresets map[string]CustomPresetDef `yaml:"custom_presets,omitempty"` // Inline custom preset definitions
+	Server         ServerConfig               `yaml:"server"`
+	Agents         []AgentConfig              `yaml:"agents"`
+	Endpoints      map[string]Endpoint        `yaml:"endpoints"`
+	Notify         NotifyConfig               `yaml:"notify,omitempty"`
+	PresetsDir     string                     `yaml:"presets_dir,omitempty"`     // Directory containing custom preset YAML files
+	CustomPresets  map[string]CustomPresetDef `yaml:"custom_presets,omitempty"`  // Inline custom preset definitions
+	FilterDefaults *FilterConfig              `yaml:"filter_defaults,omitempty"` // Default filter settings for all endpoints
 }
 
 // CustomPresetDef defines a user-created preset in YAML.
@@ -230,8 +231,25 @@ type Endpoint struct {
 	Auth         AuthConfig        `yaml:"auth"`
 	Capabilities map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")
 	Rules        []Rule            `yaml:"rules,omitempty"`
-	IMAP         *IMAPConfig       `yaml:"imap,omitempty"` // IMAP-specific settings
-	SMTP         *SMTPConfig       `yaml:"smtp,omitempty"` // SMTP-specific settings
+	IMAP         *IMAPConfig       `yaml:"imap,omitempty"`   // IMAP-specific settings
+	SMTP         *SMTPConfig       `yaml:"smtp,omitempty"`   // SMTP-specific settings
+	Filter       *FilterConfig     `yaml:"filter,omitempty"` // Sensitive data filtering settings
+}
+
+// FilterConfig holds sensitive data filtering settings.
+type FilterConfig struct {
+	Enabled        *bool                 `yaml:"enabled,omitempty"`         // Enable/disable filtering (default: true)
+	Patterns       []string              `yaml:"patterns,omitempty"`        // Built-in pattern names to use
+	CustomPatterns []CustomPatternConfig `yaml:"custom_patterns,omitempty"` // User-defined patterns
+	Action         string                `yaml:"action,omitempty"`          // redact, block, ask, log (default: block)
+	Replacement    string                `yaml:"replacement,omitempty"`     // Replacement text for redact action
+}
+
+// CustomPatternConfig defines a user-created pattern.
+type CustomPatternConfig struct {
+	Name        string `yaml:"name"`
+	Pattern     string `yaml:"pattern"` // Regex pattern
+	Description string `yaml:"description,omitempty"`
 }
 
 // IMAPConfig holds IMAP-specific settings.

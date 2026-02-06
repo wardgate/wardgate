@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wardgate/wardgate/internal/approval"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -27,6 +28,7 @@ type Handler struct {
 	engine    *policy.Engine
 	config    HandlerConfig
 	approvals ApprovalRequester
+	filter    *filter.Filter
 }
 
 // NewHandler creates a new SMTP REST handler.
@@ -41,6 +43,11 @@ func NewHandler(client Client, engine *policy.Engine, cfg HandlerConfig) *Handle
 // SetApprovalManager sets the approval manager for ask workflows.
 func (h *Handler) SetApprovalManager(m ApprovalRequester) {
 	h.approvals = m
+}
+
+// SetFilter sets the sensitive data filter for outgoing email scanning.
+func (h *Handler) SetFilter(f *filter.Filter) {
+	h.filter = f
 }
 
 // ServeHTTP handles incoming REST requests and routes them to SMTP operations.
@@ -121,6 +128,7 @@ func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request, agentID str
 
 	// Check if approval is needed
 	needsApproval := decision.Action == policy.Ask
+	var sensitiveDataReason string
 
 	// Check for new recipients if configured
 	if h.config.AskNewRecipients && !needsApproval {
@@ -130,6 +138,20 @@ func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request, agentID str
 				needsApproval = true
 				break
 			}
+		}
+	}
+
+	// Check for sensitive data in outgoing email (triggers ask workflow)
+	if h.filter != nil && h.filter.Enabled() && !needsApproval {
+		// Scan subject, body, and HTML body
+		var allMatches []filter.Match
+		allMatches = append(allMatches, h.filter.Scan(email.Subject)...)
+		allMatches = append(allMatches, h.filter.Scan(email.Body)...)
+		allMatches = append(allMatches, h.filter.Scan(email.HTMLBody)...)
+
+		if len(allMatches) > 0 {
+			needsApproval = true
+			sensitiveDataReason = filter.MatchDescription(allMatches)
 		}
 	}
 
@@ -143,6 +165,9 @@ func (h *Handler) handleSend(w http.ResponseWriter, r *http.Request, agentID str
 		// Build approval request with full email content for review
 		emailJSON, _ := json.Marshal(req)
 		summary := fmt.Sprintf("Email to %s: %s", strings.Join(email.To, ", "), email.Subject)
+		if sensitiveDataReason != "" {
+			summary = fmt.Sprintf("[SENSITIVE DATA] %s - %s", summary, sensitiveDataReason)
+		}
 
 		approved, err := h.approvals.RequestApprovalWithContent(r.Context(), approval.ApprovalRequest{
 			Endpoint:    h.config.EndpointName,

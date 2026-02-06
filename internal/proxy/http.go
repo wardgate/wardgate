@@ -1,16 +1,20 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -23,6 +27,7 @@ type Proxy struct {
 	upstream     *url.URL
 	timeout      time.Duration
 	approvals    *approval.Manager
+	filter       *filter.Filter
 }
 
 // New creates a new proxy for the given endpoint.
@@ -52,6 +57,11 @@ func (p *Proxy) SetApprovalManager(m *approval.Manager) {
 // SetTimeout sets the upstream request timeout.
 func (p *Proxy) SetTimeout(d time.Duration) {
 	p.timeout = d
+}
+
+// SetFilter sets the sensitive data filter for response filtering.
+func (p *Proxy) SetFilter(f *filter.Filter) {
+	p.filter = f
 }
 
 // ServeHTTP handles incoming requests.
@@ -110,6 +120,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				req.Header.Set("Authorization", "Bearer "+cred)
 			}
 		},
+		ModifyResponse: p.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if ctx := r.Context(); ctx.Err() == context.DeadlineExceeded {
 				http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
@@ -125,4 +136,61 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	proxy.ServeHTTP(w, r)
+}
+
+// modifyResponse filters sensitive data from response bodies.
+func (p *Proxy) modifyResponse(resp *http.Response) error {
+	// Skip if no filter configured or filter is disabled
+	if p.filter == nil || !p.filter.Enabled() {
+		return nil
+	}
+
+	// Only filter text-based responses
+	contentType := resp.Header.Get("Content-Type")
+	if !isTextContent(contentType) {
+		return nil
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	// Scan for sensitive data
+	matches := p.filter.Scan(string(body))
+
+	// Handle based on action
+	if p.filter.ShouldBlock(matches) {
+		// Return error response - replace body with error message
+		errMsg := fmt.Sprintf(`{"error": "response blocked", "reason": "%s"}`, filter.MatchDescription(matches))
+		resp.Body = io.NopCloser(bytes.NewBufferString(errMsg))
+		resp.ContentLength = int64(len(errMsg))
+		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(errMsg)))
+		resp.StatusCode = http.StatusForbidden
+		resp.Status = "403 Forbidden"
+		return nil
+	}
+
+	// Apply redaction if any matches found
+	if len(matches) > 0 {
+		filtered := p.filter.Apply(string(body), matches)
+		resp.Body = io.NopCloser(bytes.NewBufferString(filtered))
+		resp.ContentLength = int64(len(filtered))
+		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(filtered)))
+	} else {
+		resp.Body = io.NopCloser(bytes.NewBuffer(body))
+	}
+
+	return nil
+}
+
+// isTextContent checks if the content type is text-based and should be filtered.
+func isTextContent(contentType string) bool {
+	ct := strings.ToLower(contentType)
+	return strings.Contains(ct, "text/") ||
+		strings.Contains(ct, "application/json") ||
+		strings.Contains(ct, "application/xml") ||
+		strings.Contains(ct, "application/javascript")
 }

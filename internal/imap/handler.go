@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -31,6 +32,7 @@ type Handler struct {
 	pool   PoolGetter
 	engine *policy.Engine
 	config HandlerConfig
+	filter *filter.Filter
 }
 
 // NewHandler creates a new IMAP REST handler.
@@ -40,6 +42,11 @@ func NewHandler(pool PoolGetter, engine *policy.Engine, cfg HandlerConfig) *Hand
 		engine: engine,
 		config: cfg,
 	}
+}
+
+// SetFilter sets the sensitive data filter for response filtering.
+func (h *Handler) SetFilter(f *filter.Filter) {
+	h.filter = f
 }
 
 // ServeHTTP handles incoming REST requests and routes them to IMAP operations.
@@ -174,6 +181,17 @@ func (h *Handler) handleFetchMessages(w http.ResponseWriter, r *http.Request, co
 		http.Error(w, "failed to fetch messages", http.StatusInternalServerError)
 		return
 	}
+
+	// Apply sensitive data filtering to subjects if enabled
+	if h.filter != nil && h.filter.Enabled() {
+		for i := range messages {
+			matches := h.filter.Scan(messages[i].Subject)
+			if len(matches) > 0 {
+				messages[i].Subject = h.filter.Apply(messages[i].Subject, matches)
+			}
+		}
+	}
+
 	h.writeJSON(w, messages)
 }
 
@@ -197,6 +215,29 @@ func (h *Handler) handleGetMessage(w http.ResponseWriter, r *http.Request, conn 
 		http.Error(w, "failed to get message", http.StatusInternalServerError)
 		return
 	}
+
+	// Apply sensitive data filtering if enabled
+	if h.filter != nil && h.filter.Enabled() {
+		// Scan message body for sensitive data
+		matches := h.filter.Scan(msg.Body)
+
+		if h.filter.ShouldBlock(matches) {
+			http.Error(w, fmt.Sprintf("message blocked: %s", filter.MatchDescription(matches)), http.StatusForbidden)
+			return
+		}
+
+		// Apply redaction to body
+		if len(matches) > 0 {
+			msg.Body = h.filter.Apply(msg.Body, matches)
+		}
+
+		// Also filter subject
+		subjectMatches := h.filter.Scan(msg.Subject)
+		if len(subjectMatches) > 0 {
+			msg.Subject = h.filter.Apply(msg.Subject, subjectMatches)
+		}
+	}
+
 	h.writeJSON(w, msg)
 }
 

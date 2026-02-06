@@ -801,6 +801,139 @@ smtp:
 
 Keywords are case-insensitive. Any match will reject the email with HTTP 403.
 
+## Sensitive Data Filtering
+
+Wardgate can automatically detect and filter sensitive data in API responses and email messages. This prevents agents from seeing OTP codes, verification links, API keys, and other security-sensitive information.
+
+### Configuration
+
+Filtering is **enabled by default** for all endpoints. You can configure it per endpoint:
+
+```yaml
+endpoints:
+  my-api:
+    upstream: https://api.example.com
+    auth:
+      credential_env: API_KEY
+    filter:
+      enabled: true           # Enable/disable filtering (default: true)
+      patterns:               # Built-in patterns to detect
+        - otp_codes
+        - verification_links
+        - api_keys
+      action: block           # Action: block, redact, ask, log (default: block)
+      replacement: "[REDACTED]"  # Replacement text for redact action
+```
+
+To disable filtering for a specific endpoint (e.g., an OTP inbox for account creation):
+
+```yaml
+endpoints:
+  otp-inbox:
+    preset: imap
+    auth:
+      credential_env: IMAP_CREDS
+    filter:
+      enabled: false  # Allow agent to see OTP codes in this mailbox
+```
+
+### Global Defaults
+
+Set default filter settings for all endpoints:
+
+```yaml
+filter_defaults:
+  enabled: true
+  patterns:
+    - otp_codes
+    - verification_links
+    - api_keys
+  action: block
+  replacement: "[SENSITIVE DATA REDACTED]"
+```
+
+### endpoints.filter
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable sensitive data filtering |
+| `patterns` | array | `[otp_codes, verification_links, api_keys]` | Built-in patterns to detect |
+| `custom_patterns` | array | | User-defined regex patterns |
+| `action` | string | `block` | Action when detected: `block`, `redact`, `ask`, `log` |
+| `replacement` | string | `[SENSITIVE DATA REDACTED]` | Replacement text for `redact` action |
+
+### Built-in Patterns
+
+| Pattern | Description | Examples |
+|---------|-------------|----------|
+| `otp_codes` | One-time passwords and verification codes | "Code: 123456", "Your OTP is 847291" |
+| `verification_links` | Email verification and password reset URLs | `https://example.com/verify/abc`, `?token=xyz` |
+| `api_keys` | Common API key formats | `sk-...`, `ghp_...`, `AKIA...` |
+| `credit_cards` | Credit card numbers | `4111-1111-1111-1111` |
+| `passwords` | Passwords in common formats | `password: secret123` |
+| `private_keys` | Private key headers | `-----BEGIN PRIVATE KEY-----` |
+
+### Actions
+
+| Action | Description | Use Case |
+|--------|-------------|----------|
+| `block` | Return 403 error, don't return content | Default - highest security |
+| `redact` | Replace sensitive data with placeholder | When agent needs partial content |
+| `ask` | Require human approval | For SMTP: verify before sending |
+| `log` | Log detection, allow passthrough | Monitoring only |
+
+### Custom Patterns
+
+Define your own patterns using regex:
+
+```yaml
+endpoints:
+  my-api:
+    filter:
+      custom_patterns:
+        - name: internal_id
+          pattern: "INTERNAL-[A-Z0-9]{8}"
+          description: "Internal tracking IDs"
+        - name: ssn
+          pattern: "\\d{3}-\\d{2}-\\d{4}"
+          description: "Social Security Numbers"
+```
+
+### Per-Adapter Behavior
+
+| Adapter | Filter Applies To | Default Action |
+|---------|------------------|----------------|
+| HTTP | Response bodies (JSON, text, XML) | `block` |
+| IMAP | Message subject and body | `block` |
+| SMTP | Outgoing email subject/body (triggers `ask`) | `ask` |
+
+For SMTP, detecting sensitive data triggers the approval workflow rather than blocking, so humans can review before sending.
+
+### Example: Secure Email Access
+
+```yaml
+endpoints:
+  # Personal email - block OTPs and verification links
+  imap-personal:
+    preset: imap
+    auth:
+      credential_env: IMAP_PERSONAL
+    filter:
+      enabled: true
+      patterns:
+        - otp_codes
+        - verification_links
+      action: block
+
+  # OTP inbox for automated account creation - allow OTPs
+  imap-otp:
+    preset: imap
+    auth:
+      credential_env: IMAP_OTP
+    filter:
+      enabled: false  # Agent needs to read OTPs here
+```
+
 ## Security Recommendations
 
 1. **Never commit .env files** - Add to `.gitignore`

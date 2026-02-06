@@ -47,6 +47,7 @@ flowchart LR
 
 - *Credential Isolation* - Agents never see your API keys, OAuth tokens, or passwords
 - *Access Control* - Define what each agent can do: read-only calendar, no email deletion, ask before sending
+- *Sensitive Data Filtering* - Automatically block or redact OTP codes, verification links, and API keys in responses
 - *Protocol Adapters* - HTTP/REST passthrough, IMAP and SMTP with REST wrappers
 - *Audit Logging* - Every request logged (metadata only, not content) - know exactly what your agents did
 - *Approval Workflows* - Require human approval for sensitive operations (send email, delete data)
@@ -501,6 +502,36 @@ REST endpoint exposed:
 - *Recipient allowlisting* - Only allow sending to approved recipients
 - *Ask for new recipients* - Require human approval when sending to unknown recipients
 - *HTML and plain text* - Support for multipart emails
+
+## Sensitive Data Filtering
+
+Wardgate automatically detects and blocks sensitive data in API responses and emails. This prevents agents from seeing:
+
+- **OTP codes** - "Your verification code is 123456"
+- **Verification links** - Email confirmation and password reset URLs
+- **API keys** - OpenAI, GitHub, Slack, AWS keys in responses
+
+Filtering is **enabled by default**. Configure per-endpoint:
+
+```yaml
+endpoints:
+  # Normal email - block OTPs (default)
+  mail-personal:
+    preset: imap
+    auth:
+      credential_env: WARDGATE_CRED_IMAP
+    # filter.enabled is true by default
+
+  # OTP inbox - allow agent to read codes
+  mail-otp:
+    preset: imap
+    auth:
+      credential_env: WARDGATE_CRED_IMAP_OTP
+    filter:
+      enabled: false  # Disable for OTP reading
+```
+
+Actions: `block` (default), `redact`, `ask`, or `log`. See [Configuration Reference](docs/config.md#sensitive-data-filtering) for details.
 
 ## Building
 

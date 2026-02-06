@@ -10,6 +10,7 @@ import (
 
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -214,5 +215,172 @@ func TestProxy_PolicyDenyReturns403(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("expected status 403, got %d", rec.Code)
+	}
+}
+
+func TestProxy_FilterBlocksSensitiveData(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Response contains a verification code
+		w.Write([]byte(`{"message": "Your verification code is 123456"}`))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	// Create filter with block action
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"otp_codes"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/verify", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 when filter blocks, got %d", rec.Code)
+	}
+}
+
+func TestProxy_FilterRedactsSensitiveData(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Your verification code is 123456"}`))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	// Create filter with redact action
+	f, err := filter.New(filter.Config{
+		Enabled:     true,
+		Patterns:    []string{"otp_codes"},
+		Action:      filter.ActionRedact,
+		Replacement: "[REDACTED]",
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/verify", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 when filter redacts, got %d", rec.Code)
+	}
+
+	body, _ := io.ReadAll(rec.Body)
+	bodyStr := string(body)
+
+	// Should not contain the original code
+	if strings.Contains(bodyStr, "123456") {
+		t.Error("response should not contain the original code")
+	}
+	// Should contain redaction marker
+	if !strings.Contains(bodyStr, "[REDACTED]") {
+		t.Error("response should contain redaction marker")
+	}
+}
+
+func TestProxy_FilterDisabledPassesThrough(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Your verification code is 123456"}`))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	// Create disabled filter
+	f, err := filter.New(filter.Config{
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/verify", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body, _ := io.ReadAll(rec.Body)
+	// Should contain the original code when filter is disabled
+	if !strings.Contains(string(body), "123456") {
+		t.Error("response should contain original code when filter is disabled")
+	}
+}
+
+func TestProxy_FilterSkipsNonTextContent(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte(`Your verification code is 123456`)) // Would be binary in real life
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	// Create filter with block action
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"otp_codes"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/image", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	// Should pass through for non-text content
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 for non-text content, got %d", rec.Code)
 	}
 }
