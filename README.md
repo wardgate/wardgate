@@ -333,6 +333,10 @@ When an `ask` rule matches:
 3. Human reviews request in Web UI and approves or denies
 4. Request proceeds or returns 403
 
+## wardgate-cli
+
+Give agents `wardgate-cli` instead of `curl` to limit their network access. It uses curl-like arguments but only connects to your Wardgate server-agents cannot redirect to arbitrary URLs. See [wardgate-cli documentation](docs/wardgate-cli.md) for setup and security details.
+
 ## Endpoint Discovery API
 
 Agents can discover available endpoints via `GET /endpoints`:
@@ -537,6 +541,13 @@ Actions: `block` (default), `redact`, `ask`, or `log`. See [Configuration Refere
 
 ```bash
 go build -o wardgate ./cmd/wardgate
+go build -o wardgate-cli ./cmd/wardgate-cli
+```
+
+**wardgate-cli** uses a fixed config path (default `/etc/wardgate-cli/config.yaml`) so agents cannot override it. To use a different path at build time:
+
+```bash
+go build -ldflags "-X main.configPath=$HOME/.wardgate-cli.yaml" -o wardgate-cli ./cmd/wardgate-cli
 ```
 
 ## Docker Deployment

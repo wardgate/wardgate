@@ -33,6 +33,7 @@ See the **[Presets Reference](presets.md)** for all capabilities and examples.
 - [Security Architecture](architecture.md) - How Wardgate protects your credentials
 - [Policy System](policies.md) - Writing and configuring rules
 - [Deployment Guide](deployment.md) - Docker, Caddy, and production setup
+- [wardgate-cli](wardgate-cli.md) - Restricted HTTP client for agents (replaces curl)
 
 ## Sensitive Data Filtering
 
