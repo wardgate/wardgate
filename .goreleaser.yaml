@@ -1,7 +1,8 @@
 version: 2
 
 builds:
-  - main: ./cmd/wardgate
+  - id: wardgate
+    main: ./cmd/wardgate
     binary: wardgate
     env:
       - CGO_ENABLED=0
@@ -18,7 +19,8 @@ builds:
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 
-  - main: ./cmd/wardgate-cli
+  - id: wardgate-cli
+    main: ./cmd/wardgate-cli
     binary: wardgate-cli
     env:
       - CGO_ENABLED=0
@@ -37,8 +39,25 @@ builds:
       - -X main.configPath=/etc/wardgate-cli/config.yaml
 
 archives:
-  - formats: [tar.gz]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: wardgate
+    ids:
+      - wardgate
+    formats: [tar.gz]
+    name_template: "wardgate_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - config.yaml.example
+      - presets/*
+
+  - id: wardgate-cli
+    ids:
+      - wardgate-cli
+    formats: [tar.gz]
+    name_template: "wardgate-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -62,7 +81,9 @@ changelog:
       - Merge branch
 
 dockers_v2:
-  - images:
+  - ids:
+      - wardgate
+    images:
       - "avoutic/wardgate"
     tags:
       - "{{ .Version }}"
