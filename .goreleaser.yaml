@@ -64,8 +64,6 @@ archives:
     files:
       - README.md
       - LICENSE
-      - config.yaml.example
-      - presets/*
 
 checksum:
   name_template: "checksums.txt"
