@@ -1,6 +1,7 @@
 name: sentry
 description: "Sentry error tracking API"
 upstream: https://sentry.io/api/0
+docs_url: https://docs.sentry.io/api/
 auth_type: bearer
 
 capabilities:

@@ -166,6 +166,7 @@ endpoints:
 | `name` | string | No | Preset name (defaults to filename) |
 | `description` | string | Yes | Human-readable description |
 | `upstream` | string | Yes | Base URL of the API |
+| `docs_url` | string | No | Link to API documentation (exposed in discovery) |
 | `auth_type` | string | Yes | Auth type (`bearer` or `plain`) |
 | `capabilities` | array | No | List of named capabilities |
 | `default_rules` | array | No | Default rules when no capabilities specified |
@@ -295,6 +296,7 @@ Map of endpoint names to their configuration.
 |-------|------|----------|-------------|
 | `adapter` | string | No | Adapter type: `http` (default), `imap`, or `smtp` |
 | `upstream` | string | Yes | URL of the upstream service |
+| `docs_url` | string | No | Link to API documentation (exposed in discovery, overrides preset) |
 | `auth` | object | Yes | Authentication configuration |
 | `rules` | array | No | Policy rules (default: deny all) |
 | `imap` | object | No | IMAP-specific settings (for `adapter: imap`) |

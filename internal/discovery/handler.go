@@ -9,7 +9,9 @@ import (
 // EndpointInfo describes an available endpoint for agents.
 type EndpointInfo struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
+	Upstream    string `json:"upstream,omitempty"`    // Base URL of the upstream API (for version info)
+	DocsURL     string `json:"docs_url"`    // Link to API documentation (empty if none)
 }
 
 // EndpointsResponse is the response for GET /endpoints.

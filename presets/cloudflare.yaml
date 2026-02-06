@@ -1,6 +1,7 @@
 name: cloudflare
 description: "Cloudflare API v4"
 upstream: https://api.cloudflare.com/client/v4
+docs_url: https://developers.cloudflare.com/fundamentals/api
 auth_type: bearer
 
 capabilities:

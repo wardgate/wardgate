@@ -1,6 +1,7 @@
 name: pingping
 description: "PingPing.io Uptime Monitoring API"
 upstream: https://pingping.io/webapi
+docs_url: https://pingping.io/docs/api/introduction
 auth_type: bearer
 
 capabilities:

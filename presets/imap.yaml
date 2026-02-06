@@ -1,6 +1,7 @@
 name: imap
 description: "IMAP email reading (generic)"
 upstream: imaps://imap.example.com:993
+docs_url: https://github.com/wardgate/wardgate/blob/main/docs/config.md#imap-endpoints
 auth_type: plain
 adapter: imap
 

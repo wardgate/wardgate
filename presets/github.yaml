@@ -1,6 +1,7 @@
 name: github
 description: "GitHub REST API"
 upstream: https://api.github.com
+docs_url: https://docs.github.com/rest
 auth_type: bearer
 
 capabilities:

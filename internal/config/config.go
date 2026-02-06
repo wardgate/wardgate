@@ -15,6 +15,7 @@ type PresetInfo struct {
 	Name         string       // e.g., "todoist"
 	Description  string       // Human-readable description
 	Upstream     string       // Default upstream URL
+	DocsURL      string       // Link to API documentation (optional)
 	AuthType     string       // Default auth type (e.g., "bearer")
 	Adapter      string       // Adapter type (e.g., "imap", "smtp") - empty means http
 	Capabilities []Capability // Available capabilities for this preset
@@ -125,6 +126,7 @@ func customPresetDefToPresetInfo(def CustomPresetDef) PresetInfo {
 		Name:         def.Name,
 		Description:  def.Description,
 		Upstream:     def.Upstream,
+		DocsURL:      def.DocsURL,
 		AuthType:     def.AuthType,
 		Adapter:      def.Adapter,
 		Capabilities: caps,
@@ -172,6 +174,7 @@ type CustomPresetDef struct {
 	Name         string          `yaml:"name,omitempty"` // Optional, can use map key
 	Description  string          `yaml:"description"`
 	Upstream     string          `yaml:"upstream"`
+	DocsURL      string          `yaml:"docs_url,omitempty"` // Link to API documentation (optional)
 	AuthType     string          `yaml:"auth_type"`
 	Adapter      string          `yaml:"adapter,omitempty"` // "imap", "smtp", or empty for http
 	Capabilities []CapabilityDef `yaml:"capabilities,omitempty"`
@@ -228,6 +231,7 @@ type Endpoint struct {
 	Description  string            `yaml:"description,omitempty"` // User-friendly description for discovery API
 	Adapter      string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
 	Upstream     string            `yaml:"upstream,omitempty"`
+	DocsURL      string            `yaml:"docs_url,omitempty"`    // Link to API documentation (optional, overrides preset)
 	Auth         AuthConfig        `yaml:"auth"`
 	Capabilities map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")
 	Rules        []Rule            `yaml:"rules,omitempty"`
@@ -370,6 +374,9 @@ func (c *Config) applyPresets() error {
 		// Apply preset defaults (user config overrides preset)
 		if ep.Upstream == "" {
 			ep.Upstream = preset.Upstream
+		}
+		if ep.DocsURL == "" {
+			ep.DocsURL = preset.DocsURL
 		}
 		if ep.Auth.Type == "" {
 			ep.Auth.Type = preset.AuthType

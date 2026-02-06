@@ -1,6 +1,7 @@
 name: smtp
 description: "SMTP email sending (generic)"
 upstream: smtps://smtp.example.com:465
+docs_url: https://github.com/wardgate/wardgate/blob/main/docs/config.md#smtp-endpoints
 auth_type: plain
 adapter: smtp
 

@@ -180,6 +180,8 @@ func main() {
 		endpointInfos = append(endpointInfos, discovery.EndpointInfo{
 			Name:        name,
 			Description: cfg.GetEndpointDescription(name, endpoint),
+			Upstream:    endpoint.Upstream,
+			DocsURL:     endpoint.DocsURL,
 		})
 	}
 

@@ -349,12 +349,14 @@ Response:
 ```json
 {
   "endpoints": [
-    {"name": "todoist", "description": "Todoist API (Personal)"},
+    {"name": "todoist", "description": "Todoist API (Personal)", "upstream": "https://api.todoist.com/api/v1", "docs_url": "https://developer.todoist.com/api/v1/"},
     {"name": "imap-personal", "description": "IMAP (personal@example.com)"},
     {"name": "smtp-personal", "description": "SMTP (personal@example.com)"}
   ]
 }
 ```
+
+`upstream` and `docs_url` are optional; they come from presets or endpoint config and help agents understand the API version and find documentation.
 
 The description comes from (in priority order):
 1. `description` field in endpoint config

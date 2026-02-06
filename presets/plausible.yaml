@@ -1,6 +1,7 @@
 name: plausible
 description: "Plausible Analytics API"
 upstream: https://plausible.io/api/v1
+docs_url: https://plausible.io/docs
 auth_type: bearer
 
 capabilities:

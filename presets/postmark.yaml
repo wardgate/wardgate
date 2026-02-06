@@ -1,6 +1,7 @@
 name: postmark
 description: "Postmark email delivery API"
 upstream: https://api.postmarkapp.com
+docs_url: https://postmarkapp.com/developer
 auth_type: bearer
 
 capabilities:

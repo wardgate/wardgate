@@ -71,7 +71,9 @@ type EndpointsResponse struct {
 // EndpointInfo describes an available endpoint.
 type EndpointInfo struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
+	Upstream    string `json:"upstream,omitempty"`
+	DocsURL     string `json:"docs_url"`
 }
 
 // FetchEndpoints fetches the list of endpoints from the wardgate server.
