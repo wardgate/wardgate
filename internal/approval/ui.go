@@ -433,6 +433,8 @@ const dashboardHTML = `<!DOCTYPE html>
     const API_BASE = '/ui/api';
     let adminKey = localStorage.getItem('wardgate_admin_key') || '';
     let refreshInterval = null;
+    let knownApprovalIds = new Set();
+    let firstLoad = true;
     
     // DOM elements
     const loginView = document.getElementById('login-view');
@@ -564,14 +566,39 @@ const dashboardHTML = `<!DOCTYPE html>
     async function loadPending() {
       try {
         const data = await api('/approvals');
-        if (data.approvals && data.approvals.length > 0) {
-          pendingList.innerHTML = data.approvals.map(r => renderApproval(r, true)).join('');
+        const approvals = data.approvals || [];
+        if (approvals.length > 0) {
+          pendingList.innerHTML = approvals.map(r => renderApproval(r, true)).join('');
         } else {
           pendingList.innerHTML = renderEmpty('No pending approvals');
         }
+        // Detect new approvals and notify
+        const currentIds = new Set(approvals.map(r => r.id));
+        if (!firstLoad) {
+          for (const req of approvals) {
+            if (!knownApprovalIds.has(req.id)) {
+              notifyNewApproval(req);
+            }
+          }
+        }
+        knownApprovalIds = currentIds;
+        firstLoad = false;
       } catch (err) {
         pendingList.innerHTML = '<div class="empty-state"><p>Error loading approvals</p></div>';
       }
+    }
+    
+    function notifyNewApproval(req) {
+      if (Notification.permission !== 'granted') return;
+      const n = new Notification('Approval Required', {
+        body: req.method + ' ' + req.endpoint + req.path,
+        icon: undefined,
+        tag: 'wardgate-' + req.id
+      });
+      n.onclick = function() {
+        window.focus();
+        n.close();
+      };
     }
     
     async function loadHistory() {
@@ -736,6 +763,9 @@ const dashboardHTML = `<!DOCTYPE html>
     
     // Dashboard start
     function startDashboard() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
       loadPending();
       loadHistory();
       refreshInterval = setInterval(loadPending, 3000);
