@@ -181,6 +181,11 @@ func main() {
 			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, endpoint.Upstream)
 		}
 
+		// Wrap with agent scope middleware if endpoint has agents restriction
+		if len(endpoint.Agents) > 0 {
+			h = agentScopeMiddleware(endpoint.Agents, h)
+		}
+
 		apiMux.Handle("/"+name+"/", http.StripPrefix("/"+name, h))
 	}
 
@@ -192,6 +197,7 @@ func main() {
 			Description: cfg.GetEndpointDescription(name, endpoint),
 			Upstream:    endpoint.Upstream,
 			DocsURL:     endpoint.DocsURL,
+			Agents:      endpoint.Agents,
 		})
 	}
 
@@ -265,6 +271,17 @@ func main() {
 	if err := http.ListenAndServe(cfg.Server.Listen, handler); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+func agentScopeMiddleware(agents []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agentID := r.Header.Get("X-Agent-ID")
+		if !auth.AgentAllowed(agents, agentID) {
+			http.Error(w, "agent not allowed for this endpoint", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func auditMiddleware(logger *audit.Logger, endpoint string, next http.Handler) http.Handler {

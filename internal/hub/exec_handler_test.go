@@ -197,6 +197,146 @@ func TestConclaveExecHandler_AskWithoutManager(t *testing.T) {
 	}
 }
 
+func TestConclaveExecHandler_AgentNotAllowed(t *testing.T) {
+	// Conclave scoped to [tessa], but agent is "bob"
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"obsidian": {Name: "obsidian", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"obsidian": {
+			Description: "Test vault",
+			KeyEnv:      "TEST_CONCLAVE_KEY",
+			Cwd:         "/data/vault",
+			Agents:      []string{"tessa"},
+			Rules: []config.Rule{
+				{Match: config.Match{Command: "cat"}, Action: "allow"},
+				{Match: config.Match{Command: "*"}, Action: "deny"},
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"bob"}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "bob")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+
+	var resp ConclaveExecResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp.Action != "deny" {
+		t.Errorf("expected action 'deny', got %q", resp.Action)
+	}
+	if !strings.Contains(resp.Message, "not allowed") {
+		t.Errorf("expected 'not allowed' in message, got %q", resp.Message)
+	}
+}
+
+func TestConclaveExecHandler_AgentAllowed(t *testing.T) {
+	// Conclave scoped to [tessa], agent is "tessa" -- should proceed to policy evaluation
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"obsidian": {Name: "obsidian", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"obsidian": {
+			Description: "Test vault",
+			KeyEnv:      "TEST_CONCLAVE_KEY",
+			Cwd:         "/data/vault",
+			Agents:      []string{"tessa"},
+			Rules: []config.Rule{
+				{Match: config.Match{Command: "cat"}, Action: "allow"},
+				{Match: config.Match{Command: "*"}, Action: "deny"},
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"tessa"}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "tessa")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	// Should NOT get 403 for agent scoping -- should proceed to policy (allow cat) then fail on not-connected
+	if rec.Code == http.StatusForbidden {
+		t.Errorf("agent 'tessa' should be allowed, got 403")
+	}
+	// Expect 503 (not connected) since policy allows cat but conclave is offline
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (not connected), got %d", rec.Code)
+	}
+}
+
+func TestConclaveExecHandler_AgentScopeListFiltered(t *testing.T) {
+	// List conclaves should only show conclaves the agent is allowed to access
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	os.Setenv("TEST_CONCLAVE_KEY2", "test-key2")
+	t.Cleanup(func() {
+		os.Unsetenv("TEST_CONCLAVE_KEY")
+		os.Unsetenv("TEST_CONCLAVE_KEY2")
+	})
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"obsidian": {Name: "obsidian", KeyEnv: "TEST_CONCLAVE_KEY"},
+		"code":     {Name: "code", KeyEnv: "TEST_CONCLAVE_KEY2"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"obsidian": {
+			Description: "Test vault",
+			KeyEnv:      "TEST_CONCLAVE_KEY",
+			Agents:      []string{"tessa"},
+			Rules:       []config.Rule{{Match: config.Match{Command: "*"}, Action: "deny"}},
+		},
+		"code": {
+			Description: "Code env",
+			KeyEnv:      "TEST_CONCLAVE_KEY2",
+			Agents:      []string{"bob"},
+			Rules:       []config.Rule{{Match: config.Match{Command: "*"}, Action: "deny"}},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Agent-ID", "tessa")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Conclaves []ConclaveListItem `json:"conclaves"`
+	}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if len(resp.Conclaves) != 1 {
+		t.Fatalf("expected 1 conclave for tessa, got %d", len(resp.Conclaves))
+	}
+	if resp.Conclaves[0].Name != "obsidian" {
+		t.Errorf("expected conclave 'obsidian', got %q", resp.Conclaves[0].Name)
+	}
+}
+
 func TestConclaveExecHandler_MethodNotAllowed(t *testing.T) {
 	h := newTestExecHandler(t)
 

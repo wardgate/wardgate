@@ -166,12 +166,13 @@ type ToolsConfig struct {
 
 // ConclaveConfig defines a remote execution conclave.
 type ConclaveConfig struct {
-	Description    string `yaml:"description,omitempty"`
-	KeyEnv         string `yaml:"key_env"`
-	Cwd            string `yaml:"cwd,omitempty"`
-	MaxInputBytes  int64  `yaml:"max_input_bytes,omitempty"`
-	MaxOutputBytes int64  `yaml:"max_output_bytes,omitempty"`
-	Rules          []Rule `yaml:"rules,omitempty"`
+	Description    string   `yaml:"description,omitempty"`
+	KeyEnv         string   `yaml:"key_env"`
+	Agents         []string `yaml:"agents,omitempty"`
+	Cwd            string   `yaml:"cwd,omitempty"`
+	MaxInputBytes  int64    `yaml:"max_input_bytes,omitempty"`
+	MaxOutputBytes int64    `yaml:"max_output_bytes,omitempty"`
+	Rules          []Rule   `yaml:"rules,omitempty"`
 }
 
 // Config is the root configuration structure.
@@ -247,6 +248,7 @@ type AgentConfig struct {
 type Endpoint struct {
 	Preset       string            `yaml:"preset,omitempty"`      // Preset name (e.g., "todoist", "github")
 	Description  string            `yaml:"description,omitempty"` // User-friendly description for discovery API
+	Agents       []string          `yaml:"agents,omitempty"`      // Restrict to specific agents (empty = all)
 	Adapter      string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
 	Upstream     string            `yaml:"upstream,omitempty"`
 	DocsURL      string            `yaml:"docs_url,omitempty"`    // Link to API documentation (optional, overrides preset)

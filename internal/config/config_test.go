@@ -903,6 +903,79 @@ endpoints:
 
 // GetEndpointDescription tests - Phase 8
 
+// Agent scoping tests
+
+func TestLoadConfig_EndpointAgents(t *testing.T) {
+	yaml := `
+endpoints:
+  todoist:
+    agents: [tessa, bob]
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: TODOIST_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["todoist"]
+	if len(ep.Agents) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(ep.Agents))
+	}
+	if ep.Agents[0] != "tessa" || ep.Agents[1] != "bob" {
+		t.Errorf("expected agents [tessa, bob], got %v", ep.Agents)
+	}
+}
+
+func TestLoadConfig_ConclaveAgents(t *testing.T) {
+	os.Setenv("TEST_CC_KEY", "test")
+	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })
+
+	yaml := `
+conclaves:
+  obsidian:
+    agents: [tessa]
+    key_env: TEST_CC_KEY
+    rules:
+      - match: { command: "*" }
+        action: deny
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cc := cfg.Conclaves["obsidian"]
+	if len(cc.Agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(cc.Agents))
+	}
+	if cc.Agents[0] != "tessa" {
+		t.Errorf("expected agent 'tessa', got %s", cc.Agents[0])
+	}
+}
+
+func TestLoadConfig_AgentsOmitted(t *testing.T) {
+	yaml := `
+endpoints:
+  todoist:
+    upstream: https://api.todoist.com/rest/v2
+    auth:
+      type: bearer
+      credential_env: TODOIST_KEY
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["todoist"]
+	if ep.Agents != nil && len(ep.Agents) != 0 {
+		t.Errorf("expected nil/empty agents when omitted, got %v", ep.Agents)
+	}
+}
+
 func TestGetEndpointDescription_ExplicitDescription(t *testing.T) {
 	yaml := `
 endpoints:

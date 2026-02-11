@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wardgate/wardgate/internal/approval"
+	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/policy"
 )
@@ -96,6 +97,16 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, ConclaveExecResponse{
 			Action:  "error",
 			Message: fmt.Sprintf("conclave %q not found", conclaveName),
+		})
+		return
+	}
+
+	// Check agent scope
+	agentIDHeader := r.Header.Get("X-Agent-ID")
+	if !auth.AgentAllowed(cc.Agents, agentIDHeader) {
+		writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+			Action:  "deny",
+			Message: fmt.Sprintf("agent %q is not allowed to access conclave %q", agentIDHeader, conclaveName),
 		})
 		return
 	}
@@ -321,8 +332,12 @@ type ConclaveListItem struct {
 
 // handleList returns the list of configured conclaves with status.
 func (h *ExecHandler) handleList(w http.ResponseWriter, r *http.Request) {
+	agentID := r.Header.Get("X-Agent-ID")
 	items := make([]ConclaveListItem, 0, len(h.configs))
 	for name, cc := range h.configs {
+		if !auth.AgentAllowed(cc.Agents, agentID) {
+			continue
+		}
 		status := "disconnected"
 		if h.hub.IsConnected(name) {
 			status = "connected"

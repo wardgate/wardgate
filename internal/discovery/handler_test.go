@@ -80,6 +80,49 @@ func TestHandler_ListEndpoints(t *testing.T) {
 	}
 }
 
+func TestHandler_FiltersByAgent(t *testing.T) {
+	endpoints := []EndpointInfo{
+		{Name: "todoist", Description: "Todoist", Agents: []string{"tessa"}},
+		{Name: "github", Description: "GitHub", Agents: []string{"bob"}},
+		{Name: "shared", Description: "Shared API"},  // no agents restriction
+	}
+	h := NewHandler(endpoints)
+
+	// Agent "bob" should see github + shared, not todoist
+	req := httptest.NewRequest("GET", "/endpoints", nil)
+	req.Header.Set("X-Agent-ID", "bob")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp EndpointsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Endpoints) != 2 {
+		t.Fatalf("expected 2 endpoints for bob, got %d", len(resp.Endpoints))
+	}
+
+	names := map[string]bool{}
+	for _, ep := range resp.Endpoints {
+		names[ep.Name] = true
+	}
+	if names["todoist"] {
+		t.Error("bob should not see todoist (scoped to tessa)")
+	}
+	if !names["github"] {
+		t.Error("bob should see github")
+	}
+	if !names["shared"] {
+		t.Error("bob should see shared (no agents restriction)")
+	}
+}
+
 func TestHandler_NotFound(t *testing.T) {
 	h := NewHandler([]EndpointInfo{})
 

@@ -61,6 +61,7 @@ conclaves:
   obsidian:
     description: "Obsidian vault (personal notes)"
     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    agents: [tessa]  # Only agent "tessa" can access (omit for all agents)
     cwd: /data/vault
     rules:
       # Read-only tools

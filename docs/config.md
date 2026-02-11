@@ -295,6 +295,7 @@ Map of endpoint names to their configuration.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `adapter` | string | No | Adapter type: `http` (default), `imap`, or `smtp` |
+| `agents` | array | No | Agent IDs allowed to access this endpoint (empty = all agents) |
 | `upstream` | string | Yes | URL of the upstream service |
 | `docs_url` | string | No | Link to API documentation (exposed in discovery, overrides preset) |
 | `auth` | object | Yes | Authentication configuration |
@@ -305,6 +306,7 @@ Map of endpoint names to their configuration.
 ```yaml
 endpoints:
   todoist-api:
+    agents: [tessa]  # Only agent "tessa" can access this endpoint
     upstream: https://api.todoist.com/rest/v2
     auth:
       type: bearer
@@ -313,6 +315,8 @@ endpoints:
       - match: { method: GET }
         action: allow
 ```
+
+When `agents` is omitted or empty, all authenticated agents can access the endpoint. When specified, only the listed agents are permitted; other agents receive a `403 Forbidden` response, and the endpoint is hidden from their `GET /endpoints` discovery response.
 
 Endpoints are accessed as: `http://wardgate:8080/{endpoint-name}/{path}`
 
@@ -634,6 +638,7 @@ conclaves:
   obsidian:
     description: "Obsidian vault (personal notes)"
     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    agents: [tessa]  # Only agent "tessa" can execute on this conclave
     cwd: /data/vault
     rules:
       - match: { command: "cat" }
@@ -652,8 +657,11 @@ conclaves:
 |-------|------|----------|-------------|
 | `description` | string | No | Human-readable description of the conclave |
 | `key_env` | string | Yes | Environment variable holding the conclave's pre-shared key |
+| `agents` | array | No | Agent IDs allowed to access this conclave (empty = all agents) |
 | `cwd` | string | No | Default working directory for commands |
 | `rules` | array | No | Policy rules using exec match fields |
+
+When `agents` is omitted or empty, all authenticated agents can execute commands on the conclave. When specified, other agents receive `403 Forbidden` and the conclave is hidden from their `GET /conclaves` discovery response.
 
 ### Exec Match Fields
 

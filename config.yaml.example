@@ -85,6 +85,7 @@ presets_dir: ./presets
 #   obsidian:
 #     description: "Obsidian vault (personal notes)"
 #     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+#     agents: [agent-name]  # Optional: restrict to specific agents (omit for all)
 #     cwd: /data/vault
 #     rules:
 #       - match: { command: "cat" }
@@ -133,6 +134,7 @@ endpoints:
   todoist:
     preset: todoist
     description: "Todoist API (Personal)"  # Optional: shown in discovery API for agents
+    # agents: [agent-name]                 # Optional: restrict to specific agents (omit for all)
     auth:
       credential_env: WARDGATE_CRED_TODOIST_API_KEY
     capabilities:
