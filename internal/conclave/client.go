@@ -109,8 +109,11 @@ func (c *Client) connect(ctx context.Context) error {
 
 	log.Printf("Connecting to %s as %q...", c.cfg.Server, c.cfg.Name)
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, c.cfg.Server, header)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, c.cfg.Server, header)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("dial: %s (HTTP %d)", err, resp.StatusCode)
+		}
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
