@@ -288,6 +288,32 @@ agents:
 
 Agents authenticate using the `Authorization: Bearer <key>` header.
 
+#### Managing Agents via CLI
+
+Instead of manually generating keys and editing files, use the CLI:
+
+```bash
+# Add a new agent (generates key, updates config.yaml and .env)
+wardgate agent add my-agent
+
+# Remove an agent
+wardgate agent remove my-agent
+```
+
+`agent add` generates a random 32-byte key, appends the env var to `.env`, adds the agent to `config.yaml`, and prints the key for configuring `wardgate-cli`.
+
+#### Managing Conclaves via CLI
+
+```bash
+# Add a new conclave (generates key, updates config.yaml and .env)
+wardgate conclave add obsidian "Personal notes vault"
+
+# Remove a conclave
+wardgate conclave remove obsidian
+```
+
+`conclave add` generates a random key, appends the env var to `.env`, adds the conclave to `config.yaml` with a default deny-all rule, and prints a starter `wardgate-exec` config.
+
 ### endpoints
 
 Map of endpoint names to their configuration.

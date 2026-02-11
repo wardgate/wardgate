@@ -18,10 +18,11 @@ import (
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/discovery"
 	execpkg "github.com/wardgate/wardgate/internal/exec"
+	"github.com/wardgate/wardgate/internal/hub"
 	"github.com/wardgate/wardgate/internal/imap"
+	"github.com/wardgate/wardgate/internal/manage"
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
-	"github.com/wardgate/wardgate/internal/hub"
 	"github.com/wardgate/wardgate/internal/proxy"
 	"github.com/wardgate/wardgate/internal/smtp"
 )
@@ -37,6 +38,14 @@ func main() {
 	// Check for CLI subcommands before parsing flags
 	if len(os.Args) > 1 && os.Args[1] == "approvals" {
 		runCLI(os.Args[1:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "agent" {
+		runAgentCmd(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "conclave" {
+		runConclaveCmd(os.Args[2:])
 		return
 	}
 
@@ -455,4 +464,125 @@ func parseSMTPUpstream(endpoint config.Endpoint, vault auth.Vault) (smtp.Connect
 		InsecureSkipVerify: insecureSkipVerify,
 		From:               from,
 	}, nil
+}
+
+func runAgentCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: wardgate agent <add|remove> [options]\n")
+		os.Exit(1)
+	}
+
+	configPath := "config.yaml"
+	envPath := ".env"
+
+	switch args[0] {
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate agent add <id>\n")
+			os.Exit(1)
+		}
+		id := args[1]
+		keyEnvName := "WARDGATE_AGENT_" + strings.ToUpper(strings.ReplaceAll(id, "-", "_")) + "_KEY"
+
+		key, err := manage.GenerateKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating key: %v\n", err)
+			os.Exit(1)
+		}
+		if err := manage.AppendEnvVar(envPath, keyEnvName, key); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := manage.AddAgent(configPath, id, keyEnvName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Agent %q added.\n", id)
+		fmt.Printf("Key:     %s\n", key)
+		fmt.Printf("Env var: %s\n", keyEnvName)
+		fmt.Printf("\nConfigure wardgate-cli with this key.\n")
+
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate agent remove <id>\n")
+			os.Exit(1)
+		}
+		id := args[1]
+		keyEnvName := "WARDGATE_AGENT_" + strings.ToUpper(strings.ReplaceAll(id, "-", "_")) + "_KEY"
+
+		if err := manage.RemoveAgent(configPath, id); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		_ = manage.RemoveEnvVar(envPath, keyEnvName) // best effort
+		fmt.Printf("Agent %q removed.\n", id)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown agent subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func runConclaveCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: wardgate conclave <add|remove> [options]\n")
+		os.Exit(1)
+	}
+
+	configPath := "config.yaml"
+	envPath := ".env"
+
+	switch args[0] {
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate conclave add <name> [description]\n")
+			os.Exit(1)
+		}
+		name := args[1]
+		description := ""
+		if len(args) > 2 {
+			description = args[2]
+		}
+		keyEnvName := "WARDGATE_CONCLAVE_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_KEY"
+
+		key, err := manage.GenerateKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating key: %v\n", err)
+			os.Exit(1)
+		}
+		if err := manage.AppendEnvVar(envPath, keyEnvName, key); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := manage.AddConclave(configPath, name, keyEnvName, description); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Conclave %q added.\n", name)
+		fmt.Printf("Key:     %s\n", key)
+		fmt.Printf("Env var: %s\n", keyEnvName)
+		fmt.Printf("\nwardgate-exec config:\n")
+		fmt.Printf("  server: wss://your-wardgate-host/conclaves/ws\n")
+		fmt.Printf("  key: %s\n", key)
+		fmt.Printf("  name: %s\n", name)
+
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate conclave remove <name>\n")
+			os.Exit(1)
+		}
+		name := args[1]
+		keyEnvName := "WARDGATE_CONCLAVE_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_KEY"
+
+		if err := manage.RemoveConclave(configPath, name); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		_ = manage.RemoveEnvVar(envPath, keyEnvName) // best effort
+		fmt.Printf("Conclave %q removed.\n", name)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown conclave subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
 }

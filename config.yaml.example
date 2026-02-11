@@ -21,6 +21,7 @@ filter_defaults:
   action: block           # block | redact | ask | log
   replacement: "[SENSITIVE DATA REDACTED]"
 
+# Agents can be added manually below, or via CLI: wardgate agent add <id>
 agents:
   - id: agent-name
     key_env: WARDGATE_AGENT_KEY
