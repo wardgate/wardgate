@@ -10,7 +10,6 @@ import (
 
 func newTestExecutor(allowedBins []string) *Executor {
 	cfg := &Config{
-		Cwd:            "/tmp",
 		MaxOutputBytes: DefaultMaxOutputBytes,
 		AllowedBins:    allowedBins,
 	}

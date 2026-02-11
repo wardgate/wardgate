@@ -12,7 +12,6 @@ func TestLoadConfig_Valid(t *testing.T) {
 server: wss://wardgate.example.com/conclaves/ws
 key: secret-key
 name: obsidian
-cwd: /data/vault
 max_input_bytes: 2097152
 max_output_bytes: 5242880
 allowed_bins:
@@ -33,9 +32,6 @@ allowed_bins:
 	}
 	if cfg.Name != "obsidian" {
 		t.Errorf("name: expected 'obsidian', got %q", cfg.Name)
-	}
-	if cfg.Cwd != "/data/vault" {
-		t.Errorf("cwd: expected '/data/vault', got %q", cfg.Cwd)
 	}
 	if cfg.MaxInputBytes != 2097152 {
 		t.Errorf("max_input_bytes: expected 2097152, got %d", cfg.MaxInputBytes)
@@ -65,9 +61,6 @@ name: test
 	}
 	if cfg.MaxOutputBytes != DefaultMaxOutputBytes {
 		t.Errorf("max_output_bytes: expected default %d, got %d", DefaultMaxOutputBytes, cfg.MaxOutputBytes)
-	}
-	if cfg.Cwd != "/" {
-		t.Errorf("cwd: expected default '/', got %q", cfg.Cwd)
 	}
 }
 
