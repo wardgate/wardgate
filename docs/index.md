@@ -57,6 +57,7 @@ conclaves:
 
 - [Conclaves](conclaves.md) -- Isolated remote execution environments, policy rules, deployment
 - [wardgate-cli](wardgate-cli.md) -- Restricted HTTP client and conclave exec tool for agents
+- [wardgate-cli AI Skill](../skills/wardgate-cli/SKILL.md) -- Skill file to teach AI agents how to use wardgate-cli
 
 ### Operations
 

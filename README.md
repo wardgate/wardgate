@@ -155,6 +155,7 @@ See [INSTALL.md](INSTALL.md) for all installation methods (pre-built binaries, D
 - [Configuration Reference](docs/config.md) -- All configuration options
 - [Conclaves](docs/conclaves.md) -- Isolated remote execution environments
 - [wardgate-cli](docs/wardgate-cli.md) -- Restricted HTTP client and conclave exec for agents
+- [wardgate-cli AI Skill](skills/wardgate-cli/SKILL.md) -- Skill file to teach AI agents how to use wardgate-cli
 - [Deployment Guide](docs/deployment.md) -- Docker, Caddy, and production setup
 
 ## Testing

@@ -125,7 +125,7 @@ ca_file: /etc/wardgate-cli/ca.pem
 - Run the agent as a non-root user that cannot write to the config directory
 - The config path is fixed at build time -- agents cannot override it
 
-See [wardgate-cli documentation](docs/wardgate-cli.md) for full details.
+See [wardgate-cli documentation](docs/wardgate-cli.md) for full details. To teach an AI agent how to use `wardgate-cli`, copy the [wardgate-cli AI Skill](skills/wardgate-cli/SKILL.md) into your agent's skill/tool directory.
 
 ## wardgate-exec / Conclave Setup
 

@@ -190,3 +190,7 @@ wardgate-cli /todoist/tasks
 
 No need to add your bearer token. The standard curl arguments are still supported, but the method is optional and defaults to GET when not specified.
 ```
+
+### AI Skill
+
+The [wardgate-cli AI Skill](../skills/wardgate-cli/SKILL.md) is a skill file that teaches AI agents how to use `wardgate-cli` -- discovery, API requests, conclave exec, and troubleshooting. Copy it into your agent's skill/tool directory so it knows how to interact with Wardgate without additional prompting.
