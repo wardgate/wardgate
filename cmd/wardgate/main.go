@@ -36,24 +36,59 @@ var (
 	date    = "unknown"
 )
 
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `wardgate %s — Security gateway for AI agents
+
+Usage:
+  wardgate [flags]                    Start the gateway server
+  wardgate <command> [args]           Run a management command
+
+Server flags:
+  -config string   Path to config file (default "config.yaml")
+  -env string      Path to .env file (default ".env")
+  -version         Show version and exit
+
+Commands:
+  approvals   Manage pending approval requests (list, approve, deny, view, history, monitor)
+  agent       Manage agents (list, add, remove)
+  conclave    Manage conclaves (list, add, remove)
+  grants      Manage dynamic grants (list, add, revoke)
+
+Run 'wardgate <command>' with no args for command-specific help.
+`, version)
+}
+
 func main() {
-	// Check for CLI subcommands before parsing flags
-	if len(os.Args) > 1 && os.Args[1] == "approvals" {
-		runCLI(os.Args[1:])
-		return
+	// Check for subcommands before parsing flags
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		switch arg {
+		case "help", "--help", "-h":
+			printUsage()
+			os.Exit(0)
+		case "approvals":
+			runCLI(os.Args[1:])
+			return
+		case "agent":
+			runAgentCmd(os.Args[2:])
+			return
+		case "conclave":
+			runConclaveCmd(os.Args[2:])
+			return
+		case "grants":
+			runGrantsCmd(os.Args[2:])
+			return
+		default:
+			if !strings.HasPrefix(arg, "-") {
+				fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", arg)
+				printUsage()
+				os.Exit(1)
+			}
+		}
 	}
-	if len(os.Args) > 1 && os.Args[1] == "agent" {
-		runAgentCmd(os.Args[2:])
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "conclave" {
-		runConclaveCmd(os.Args[2:])
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "grants" {
-		runGrantsCmd(os.Args[2:])
-		return
-	}
+
+	// Override default flag usage to show full help
+	flag.Usage = printUsage
 
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	envPath := flag.String("env", ".env", "Path to .env file")
@@ -489,7 +524,7 @@ func parseSMTPUpstream(endpoint config.Endpoint, vault auth.Vault) (smtp.Connect
 
 func runAgentCmd(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: wardgate agent <add|remove> [options]\n")
+		fmt.Fprintf(os.Stderr, "Usage: wardgate agent <list|add|remove> [options]\n")
 		os.Exit(1)
 	}
 
@@ -497,6 +532,20 @@ func runAgentCmd(args []string) {
 	envPath := ".env"
 
 	switch args[0] {
+	case "list":
+		agents, err := manage.ListAgents(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(agents) == 0 {
+			fmt.Println("No agents configured.")
+			return
+		}
+		for _, a := range agents {
+			fmt.Printf("%-20s key_env=%s\n", a.ID, a.KeyEnv)
+		}
+
 	case "add":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: wardgate agent add <id>\n")
@@ -546,7 +595,7 @@ func runAgentCmd(args []string) {
 
 func runConclaveCmd(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: wardgate conclave <add|remove> [options]\n")
+		fmt.Fprintf(os.Stderr, "Usage: wardgate conclave <list|add|remove> [options]\n")
 		os.Exit(1)
 	}
 
@@ -554,6 +603,24 @@ func runConclaveCmd(args []string) {
 	envPath := ".env"
 
 	switch args[0] {
+	case "list":
+		conclaves, err := manage.ListConclaves(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(conclaves) == 0 {
+			fmt.Println("No conclaves configured.")
+			return
+		}
+		for _, c := range conclaves {
+			desc := c.Description
+			if desc == "" {
+				desc = "(no description)"
+			}
+			fmt.Printf("%-20s %s\n", c.Name, desc)
+		}
+
 	case "add":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: wardgate conclave add <name> [description]\n")
