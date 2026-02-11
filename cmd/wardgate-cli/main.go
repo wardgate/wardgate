@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/wardgate/wardgate/internal/cli"
+	execpkg "github.com/wardgate/wardgate/internal/exec"
 )
 
 // Set by goreleaser ldflags (or at build: -ldflags "-X main.configPath=/path")
@@ -51,9 +55,17 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Check for endpoints subcommand
+	// Check for subcommands
 	if len(flag.Args()) > 0 && flag.Arg(0) == "endpoints" {
 		runEndpoints(configPath, *envPath)
+		return
+	}
+	if len(flag.Args()) > 0 && flag.Arg(0) == "conclaves" {
+		runConclaves(configPath, *envPath)
+		return
+	}
+	if len(flag.Args()) > 0 && flag.Arg(0) == "exec" {
+		runExec(configPath, *envPath, flag.Args()[1:])
 		return
 	}
 
@@ -122,6 +134,72 @@ func runEndpoints(configPath, envPath string) {
 	}
 }
 
+func runConclaves(configPath, envPath string) {
+	cfg, err := cli.Load(envPath, configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.Server == "" {
+		fmt.Fprintf(os.Stderr, "Error: server not configured (set server in %s)\n", configPath)
+		os.Exit(1)
+	}
+
+	key, err := cfg.GetKey()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	rootCAs, err := cfg.LoadRootCAs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{RootCAs: rootCAs})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	conclavesURL, err := client.ResolveURL("/conclaves/")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, conclavesURL, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", string(body))
+		os.Exit(1)
+	}
+
+	var result json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.Encode(result)
+}
+
 type runRequestOpts struct {
 	method          string
 	headers         headerSlice
@@ -143,6 +221,8 @@ func runRequest(configPath, envPath string, opts runRequestOpts) {
 	if pathOrURL == "" {
 		fmt.Fprintln(os.Stderr, "Usage: wardgate-cli [options] <path-or-url>")
 		fmt.Fprintln(os.Stderr, "       wardgate-cli endpoints")
+		fmt.Fprintln(os.Stderr, "       wardgate-cli conclaves")
+		fmt.Fprintln(os.Stderr, "       wardgate-cli exec [-C <dir>] <conclave> \"<command>\"")
 		fmt.Fprintf(os.Stderr, "\nConfig: %s (fixed at build)\n", configPath)
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -241,4 +321,152 @@ func (h *headerSlice) String() string { return strings.Join(*h, ", ") }
 func (h *headerSlice) Set(s string) error {
 	*h = append(*h, s)
 	return nil
+}
+
+func runExec(configPath, envPath string, args []string) {
+	// Parse exec-specific flags
+	execFlags := flag.NewFlagSet("exec", flag.ExitOnError)
+	cwdFlag := execFlags.String("C", "", "Working directory for command execution")
+	execFlags.Parse(args)
+
+	if execFlags.NArg() < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: wardgate-cli exec [-C <dir>] <conclave> \"<command>\"")
+		os.Exit(1)
+	}
+
+	conclaveName := execFlags.Arg(0)
+	cmdStr := execFlags.Arg(1)
+
+	// Determine cwd (optional — conclave has its own default)
+	cwd := *cwdFlag
+	if cwd != "" {
+		var err error
+		cwd, err = filepath.Abs(cwd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid working directory: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Parse for unsafe construct detection + segment extraction
+	result, err := execpkg.ParseShellCommand(cmdStr)
+	if err != nil {
+		if _, ok := err.(*execpkg.UnsafeShellError); ok {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Commands containing $(), backticks, or subshells are not supported.")
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Error parsing command: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Load config and create client
+	cfg, err := cli.Load(envPath, configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.Server == "" {
+		fmt.Fprintf(os.Stderr, "Error: server not configured (set server in %s)\n", configPath)
+		os.Exit(1)
+	}
+
+	key, err := cfg.GetKey()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	rootCAs, err := cfg.LoadRootCAs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{RootCAs: rootCAs})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build segments for policy evaluation (command names, not absolute paths)
+	type execSegment struct {
+		Command string `json:"command"`
+		Args    string `json:"args"`
+	}
+	segments := make([]execSegment, len(result.Segments))
+	for i, seg := range result.Segments {
+		segments[i] = execSegment{
+			Command: seg.Command,
+			Args:    seg.Args,
+		}
+	}
+
+	// Send exec request to wardgate — policy eval + execution happen server-side
+	execReq := struct {
+		Segments []execSegment `json:"segments"`
+		Cwd      string        `json:"cwd,omitempty"`
+		Raw      string        `json:"raw"`
+	}{
+		Segments: segments,
+		Cwd:      cwd,
+		Raw:      result.Raw,
+	}
+
+	body, err := json.Marshal(execReq)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	execURL, err := client.ResolveURL(fmt.Sprintf("/conclaves/%s/exec", conclaveName))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var execResp struct {
+		Action   string `json:"action"`
+		Message  string `json:"message,omitempty"`
+		Stdout   string `json:"stdout,omitempty"`
+		Stderr   string `json:"stderr,omitempty"`
+		ExitCode *int   `json:"exit_code,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&execResp); err != nil {
+		fmt.Fprintf(os.Stderr, "Error decoding response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if execResp.Stderr != "" {
+		fmt.Fprint(os.Stderr, execResp.Stderr)
+	}
+	if execResp.Stdout != "" {
+		fmt.Print(execResp.Stdout)
+	}
+
+	if execResp.Action != "allow" {
+		if execResp.Message != "" {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", execResp.Message)
+		}
+		os.Exit(1)
+	}
+
+	if execResp.ExitCode != nil {
+		os.Exit(*execResp.ExitCode)
+	}
 }

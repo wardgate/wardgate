@@ -30,6 +30,21 @@ services:
     depends_on:
       - wardgate
 
+  # Example conclave: mount your data and config
+  # conclave-obsidian:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.conclave
+  #   container_name: wardgate-conclave-obsidian
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /path/to/obsidian/vault:/data:ro
+  #     - ./config/conclave-obsidian.yaml:/etc/wardgate-exec/config.yaml:ro
+  #   networks:
+  #     - wardgate-net
+  #   depends_on:
+  #     - wardgate
+
 networks:
   wardgate-net:
     driver: bridge

@@ -1,0 +1,40 @@
+# Example Dockerfile for a wardgate conclave.
+# Customize the installed tools for your use case.
+#
+# Build:
+#   docker build -f Dockerfile.conclave -t wardgate-conclave .
+#
+# Run (mount your config):
+#   docker run -d \
+#     -v /path/to/data:/data:ro \
+#     -v /path/to/conclave-config.yaml:/etc/wardgate-exec/config.yaml:ro \
+#     wardgate-conclave
+
+# Build wardgate-exec
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o wardgate-exec ./cmd/wardgate-exec
+
+# Runtime
+FROM alpine:3.21
+
+# Install tools available in this conclave.
+# Customize this list for your use case.
+RUN apk add --no-cache ca-certificates ripgrep coreutils
+
+# Create non-root user
+RUN adduser -D -u 1000 conclave
+
+# Copy binary
+COPY --from=builder /app/wardgate-exec /usr/local/bin/wardgate-exec
+
+# Data volume
+VOLUME /data
+
+USER conclave
+
+ENTRYPOINT ["wardgate-exec"]
+CMD ["-config", "/etc/wardgate-exec/config.yaml"]

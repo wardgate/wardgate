@@ -147,6 +147,7 @@ const dashboardHTML = `<!DOCTYPE html>
     .method-PUT { background: #f59e0b20; color: #f59e0b; }
     .method-DELETE { background: #ef444420; color: #ef4444; }
     .method-PATCH { background: #8b5cf620; color: #8b5cf6; }
+    .method-EXEC { background: #f9731620; color: #f97316; }
     
     .status { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
     .status-pending { background: #f59e0b20; color: #f59e0b; }
@@ -517,7 +518,15 @@ const dashboardHTML = `<!DOCTYPE html>
       const methodClass = 'method-' + req.method;
       
       let contentHtml = '';
-      if (req.body) {
+      if (req.content_type === 'exec' && req.headers) {
+        if (req.headers['Conclave']) {
+          contentHtml += '<div class="content-label">Conclave</div><div class="meta-value" style="margin-bottom: 8px;"><span style="font-weight: 600;">' + escapeHtml(req.headers['Conclave']) + '</span></div>';
+        }
+        contentHtml += '<div class="content-label">Command</div><div class="content-preview" style="font-family: monospace;">' + escapeHtml(req.body || req.headers['Command'] || '-') + '</div>';
+        if (req.headers['Cwd']) {
+          contentHtml += '<div class="content-label" style="margin-top: 8px;">Working Directory</div><div class="content-preview" style="font-family: monospace;">' + escapeHtml(req.headers['Cwd']) + '</div>';
+        }
+      } else if (req.body) {
         let bodyDisplay = req.body;
         try {
           bodyDisplay = JSON.stringify(JSON.parse(req.body), null, 2);

@@ -99,6 +99,20 @@ wardgate-cli /todoist/tasks
 wardgate-cli -X POST -H "Content-Type: application/json" -d '{"content":"Buy milk"}' /todoist/tasks
 ```
 
+**Execute a command on a conclave:**
+
+```bash
+wardgate-cli exec code "git status"
+wardgate-cli exec code "rg TODO src/ | head -20"
+wardgate-cli exec -C /home/agent/project code "make build"
+```
+
+**List conclaves:**
+
+```bash
+wardgate-cli conclaves
+```
+
 ## Options
 
 | Option | Description |
@@ -114,6 +128,56 @@ wardgate-cli -X POST -H "Content-Type: application/json" -d '{"content":"Buy mil
 | `ca_file` (config) | Path to custom CA cert (PEM) for internal Wardgate with custom CA |
 | `-w`, `--write-out` | Write-out format (e.g. `%{http_code}`) |
 | `-env` | Path to .env file for key_env (default: .env) |
+
+## Conclave Exec
+
+The `exec` subcommand sends shell commands to a conclave (remote execution environment) through wardgate's policy engine.
+
+### How It Works
+
+1. `wardgate-cli` receives the conclave name and command string
+2. Parses the command into individual segments (splitting on `|`, `&&`, `||`, `;`)
+3. Sends segments and the raw command to wardgate for policy evaluation and remote execution
+4. Wardgate evaluates each segment against the conclave's rules
+5. If all pass: forwards the command to the conclave via WebSocket
+6. The conclave executes the command and streams stdout/stderr back
+
+### Usage
+
+```bash
+wardgate-cli exec [-C <dir>] <conclave> "<command>"
+```
+
+### Pipeline Support
+
+Piped and chained commands are parsed and each segment is evaluated individually:
+
+```bash
+wardgate-cli exec code "rg TODO src/ | head -20"       # both rg and head checked
+wardgate-cli exec code "git add . && git commit -m msg" # both git invocations checked
+```
+
+### Rejected Constructs
+
+Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), and subshells are rejected because they introduce hidden command execution that cannot be policy-checked.
+
+### Working Directory
+
+Use `-C` to set the working directory on the conclave. If not specified, the conclave's configured `cwd` is used:
+
+```bash
+wardgate-cli exec -C /data/vault obsidian "rg 'meeting notes' ."
+```
+
+### Security
+
+- Commands are parsed and each segment is evaluated against per-conclave policy rules
+- The agent cannot invoke `/bin/sh` directly (denied by policy)
+- `wardgate-cli` controls all parsing — the agent only provides a command string
+- Execution happens on the conclave, not the agent host
+- Conclaves connect outbound to wardgate — no inbound ports required
+
+See [Conclaves](conclaves.md) for full documentation including policy configuration.
 
 ## Agent Integration
 

@@ -48,6 +48,7 @@ flowchart LR
 - *Credential Isolation* - Agents never see your API keys, OAuth tokens, or passwords
 - *Access Control* - Define what each agent can do: read-only calendar, no email deletion, ask before sending
 - *Sensitive Data Filtering* - Automatically block or redact OTP codes, verification links, and API keys in responses
+- *Conclaves* - Isolated remote execution environments for agent tool calls, accessible only through Wardgate
 - *Protocol Adapters* - HTTP/REST passthrough, IMAP and SMTP with REST wrappers
 - *Audit Logging* - Every request logged (metadata only, not content) - know exactly what your agents did
 - *Approval Workflows* - Require human approval for sensitive operations (send email, delete data)
@@ -153,6 +154,7 @@ The gateway:
 
 - [Security Architecture](docs/architecture.md) - How Wardgate protects your credentials
 - [Policy System](docs/policies.md) - Writing and configuring rules
+- [Conclaves](docs/conclaves.md) - Isolated remote execution environments for agent tool calls
 - [Presets Reference](docs/presets.md) - Built-in presets and capabilities
 - [Configuration Reference](docs/config.md) - All configuration options
 - [Deployment Guide](docs/deployment.md) - Docker, Caddy, and production setup
@@ -539,11 +541,46 @@ endpoints:
 
 Actions: `block` (default), `redact`, `ask`, or `log`. See [Configuration Reference](docs/config.md#sensitive-data-filtering) for details.
 
+## Conclaves (Remote Execution Environments)
+
+A **conclave** is an isolated execution environment with specific data and tools, accessible only through Wardgate. The agent host has no direct access to conclave filesystems or binaries.
+
+```yaml
+conclaves:
+  obsidian:
+    description: "Obsidian vault (personal notes)"
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    rules:
+      - match: { command: "cat" }
+        action: allow
+      - match: { command: "rg" }
+        action: allow
+      - match: { command: "tee" }
+        action: ask
+      - match: { command: "*" }
+        action: deny
+```
+
+Each conclave runs `wardgate-exec`, a minimal daemon that connects outbound to Wardgate via WebSocket. It receives commands, executes them, and streams results back.
+
+Agents use `wardgate-cli exec` to target a conclave:
+
+```bash
+wardgate-cli exec obsidian "rg 'meeting notes' ."
+wardgate-cli exec code "git status"
+```
+
+Pipelines and chains are parsed — each command is evaluated individually. Command substitution (`$()`, backticks) and subshells are rejected.
+
+See [Conclaves](docs/conclaves.md) for full documentation.
+
 ## Building
 
 ```bash
 go build -o wardgate ./cmd/wardgate
 go build -o wardgate-cli ./cmd/wardgate-cli
+go build -o wardgate-exec ./cmd/wardgate-exec
 ```
 
 **wardgate-cli** uses a fixed config path (default `/etc/wardgate-cli/config.yaml`) so agents cannot override it. To use a different path at build time:

@@ -70,6 +70,57 @@ presets_dir: ./presets
 #           - match: { method: DELETE }
 
 # =============================================================================
+# CONCLAVES (remote execution environments)
+# =============================================================================
+# Conclaves are isolated environments that run wardgate-exec and connect
+# to wardgate via WebSocket. Agents execute commands on conclaves through
+# wardgate, which enforces policy and logs everything.
+#
+# Each conclave needs:
+#   - A key for authentication (stored in env var)
+#   - Policy rules (same syntax as endpoint exec rules)
+#   - A wardgate-exec instance running on the conclave host
+
+# conclaves:
+#   obsidian:
+#     description: "Obsidian vault (personal notes)"
+#     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+#     cwd: /data/vault
+#     rules:
+#       - match: { command: "cat" }
+#         action: allow
+#       - match: { command: "rg" }
+#         action: allow
+#       - match: { command: "head" }
+#         action: allow
+#       - match: { command: "tail" }
+#         action: allow
+#       - match: { command: "add_to_daily_notes.sh" }
+#         action: allow
+#       - match: { command: "tee" }
+#         action: ask
+#       - match: { command: "*" }
+#         action: deny
+#
+#   code:
+#     description: "Development environment"
+#     key_env: WARDGATE_CONCLAVE_CODE_KEY
+#     cwd: /workspace/project
+#     rules:
+#       - match: { command: "git", args_pattern: "^(status|log|diff|show|branch)" }
+#         action: allow
+#       - match: { command: "git", args_pattern: "^(push|commit|rebase)" }
+#         action: ask
+#       - match: { command: "rg" }
+#         action: allow
+#       - match: { command: "make" }
+#         action: allow
+#       - match: { command: "setup-dev.sh" }
+#         action: ask
+#       - match: { command: "*" }
+#         action: deny
+
+# =============================================================================
 # ENDPOINTS
 # =============================================================================
 

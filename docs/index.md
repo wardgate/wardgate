@@ -32,8 +32,9 @@ See the **[Presets Reference](presets.md)** for all capabilities and examples.
 - [Configuration Reference](config.md) - All configuration options
 - [Security Architecture](architecture.md) - How Wardgate protects your credentials
 - [Policy System](policies.md) - Writing and configuring rules
+- [Conclaves](conclaves.md) - Isolated remote execution environments for agent tool calls
 - [Deployment Guide](deployment.md) - Docker, Caddy, and production setup
-- [wardgate-cli](wardgate-cli.md) - Restricted HTTP client for agents (replaces curl)
+- [wardgate-cli](wardgate-cli.md) - Restricted HTTP client and conclave exec for agents
 
 ## Sensitive Data Filtering
 

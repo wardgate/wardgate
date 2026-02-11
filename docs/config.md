@@ -344,6 +344,9 @@ Array of policy rules. See [Policy Documentation](policies.md) for details.
 | `match` | object | Yes | Conditions to match |
 | `match.method` | string | No | HTTP method to match (`GET`, `POST`, `*`, etc.) |
 | `match.path` | string | No | Path pattern to match |
+| `match.command` | string | No | Exec: glob match on command path (e.g., `/usr/bin/python*`) |
+| `match.args_pattern` | string | No | Exec: regex match on argument string |
+| `match.cwd_pattern` | string | No | Exec: glob match on working directory |
 | `action` | string | Yes | Action to take (`allow`, `deny`, `ask`) |
 | `message` | string | No | Message to return (for `deny`) |
 | `rate_limit` | object | No | Rate limiting configuration |
@@ -621,6 +624,48 @@ Wardgate validates configuration on startup:
 - Rate limit `window` must be valid duration
 
 Invalid configuration causes startup failure with descriptive error.
+
+## Conclaves (Remote Execution Environments)
+
+The top-level `conclaves:` section defines isolated execution environments and their per-conclave policy rules.
+
+```yaml
+conclaves:
+  obsidian:
+    description: "Obsidian vault (personal notes)"
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    rules:
+      - match: { command: "cat" }
+        action: allow
+      - match: { command: "rg" }
+        action: allow
+      - match: { command: "tee" }
+        action: ask
+      - match: { command: "*" }
+        action: deny
+```
+
+### Conclave Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | No | Human-readable description of the conclave |
+| `key_env` | string | Yes | Environment variable holding the conclave's pre-shared key |
+| `cwd` | string | No | Default working directory for commands |
+| `rules` | array | No | Policy rules using exec match fields |
+
+### Exec Match Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Glob match on command name (e.g., `rg`, `python*`, `*`) |
+| `args_pattern` | string | Regex match on the joined argument string |
+| `cwd_pattern` | string | Glob match on the working directory |
+
+All match fields are optional and AND-ed together. Commands are resolved to absolute paths on the conclave by `wardgate-exec`.
+
+See [Conclaves](conclaves.md) for full documentation including pipeline support, deployment, and limitations.
 
 ## IMAP Endpoints
 

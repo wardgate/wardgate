@@ -359,6 +359,58 @@ rules:
     action: deny
 ```
 
+## Conclave Policies (Remote Execution)
+
+Each conclave has its own `rules:` section that evaluates shell commands sent via `wardgate-cli exec`.
+
+### Exec Match Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | glob | Command name (e.g., `rg`, `python*`, `*`) |
+| `args_pattern` | regex | Joined argument string (e.g., `^(status\|log\|diff)`) |
+| `cwd_pattern` | glob | Working directory (e.g., `/data/vault/**`) |
+
+All fields are optional and AND-ed together.
+
+### Conclave Policy Examples
+
+```yaml
+conclaves:
+  code:
+    key_env: WARDGATE_CONCLAVE_CODE_KEY
+    rules:
+      # Read-only tools
+      - match: { command: "rg" }
+        action: allow
+      - match: { command: "cat" }
+        action: allow
+
+      # Git: allow reads, ask for writes
+      - match: { command: "git", args_pattern: "^(status|log|diff|show)" }
+        action: allow
+      - match: { command: "git", args_pattern: "^(push|commit|rebase)" }
+        action: ask
+
+      # Restrict to a directory
+      - match: { command: "git", cwd_pattern: "/home/dev/project/**" }
+        action: allow
+
+      # Default deny
+      - match: { command: "*" }
+        action: deny
+```
+
+### Shell Pipelines
+
+When agents run piped commands (`rg TODO | head -20`), `wardgate-cli` parses the pipeline and evaluates each segment individually. All must pass.
+
+Supported: pipes (`|`), chains (`&&`, `||`, `;`), redirections (`>`, `>>`, `<`).
+
+Rejected: command substitution (`$()`, backticks), process substitution (`<()`, `>()`), subshells (`(cmd)`).
+
+See [Conclaves](conclaves.md) for full documentation.
+
 ## Debugging Policies
 
 ### Policy Evaluation Order

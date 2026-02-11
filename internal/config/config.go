@@ -158,11 +158,29 @@ func (c *Config) buildPresetRegistry() (map[string]PresetInfo, error) {
 	return registry, nil
 }
 
+// ToolsConfig defines top-level tool call gating configuration.
+// Deserialized from the "tools:" key and injected as an exec endpoint internally.
+type ToolsConfig struct {
+	Rules []Rule `yaml:"rules"`
+}
+
+// ConclaveConfig defines a remote execution conclave.
+type ConclaveConfig struct {
+	Description    string `yaml:"description,omitempty"`
+	KeyEnv         string `yaml:"key_env"`
+	Cwd            string `yaml:"cwd,omitempty"`
+	MaxInputBytes  int64  `yaml:"max_input_bytes,omitempty"`
+	MaxOutputBytes int64  `yaml:"max_output_bytes,omitempty"`
+	Rules          []Rule `yaml:"rules,omitempty"`
+}
+
 // Config is the root configuration structure.
 type Config struct {
 	Server         ServerConfig               `yaml:"server"`
 	Agents         []AgentConfig              `yaml:"agents"`
 	Endpoints      map[string]Endpoint        `yaml:"endpoints"`
+	Conclaves      map[string]ConclaveConfig  `yaml:"conclaves,omitempty"`      // Remote execution conclaves
+	Tools          *ToolsConfig               `yaml:"tools,omitempty"`          // Top-level tool call gating
 	Notify         NotifyConfig               `yaml:"notify,omitempty"`
 	PresetsDir     string                     `yaml:"presets_dir,omitempty"`     // Directory containing custom preset YAML files
 	CustomPresets  map[string]CustomPresetDef `yaml:"custom_presets,omitempty"`  // Inline custom preset definitions
@@ -295,6 +313,11 @@ type Rule struct {
 type Match struct {
 	Method string `yaml:"method,omitempty"`
 	Path   string `yaml:"path,omitempty"`
+
+	// Exec-specific match fields (for adapter: exec)
+	Command    string `yaml:"command,omitempty"`     // Glob match on executable path (e.g., "/usr/bin/python*")
+	ArgsPattern string `yaml:"args_pattern,omitempty"` // Regex match on joined argument string
+	CwdPattern  string `yaml:"cwd_pattern,omitempty"`  // Glob match on working directory
 }
 
 // RateLimit defines rate limiting for a rule.
@@ -343,6 +366,20 @@ func LoadFromReader(r io.Reader) (*Config, error) {
 	// Apply presets to endpoints
 	if err := cfg.applyPresets(); err != nil {
 		return nil, err
+	}
+
+	// Inject top-level tools: as an exec endpoint
+	if cfg.Tools != nil {
+		if cfg.Endpoints == nil {
+			cfg.Endpoints = make(map[string]Endpoint)
+		}
+		if _, exists := cfg.Endpoints["exec"]; exists {
+			return nil, fmt.Errorf("cannot use top-level 'tools:' when an endpoint named 'exec' already exists")
+		}
+		cfg.Endpoints["exec"] = Endpoint{
+			Adapter: "exec",
+			Rules:   cfg.Tools.Rules,
+		}
 	}
 
 	// Validate
@@ -475,7 +512,35 @@ func (c *Config) GetEndpointDescription(name string, ep Endpoint) string {
 }
 
 func (c *Config) validate() error {
+	// Validate conclaves
+	for name, cc := range c.Conclaves {
+		if cc.KeyEnv == "" {
+			return fmt.Errorf("conclave %q: missing key_env", name)
+		}
+		for i, rule := range cc.Rules {
+			if rule.Action == "" {
+				continue
+			}
+			if !validActions[rule.Action] {
+				return fmt.Errorf("conclave %q rule %d: invalid action %q", name, i, rule.Action)
+			}
+		}
+	}
+
 	for name, ep := range c.Endpoints {
+		adapter := strings.ToLower(ep.Adapter)
+		if adapter == "exec" {
+			// Exec endpoints don't need upstream or auth
+			for i, rule := range ep.Rules {
+				if rule.Action == "" {
+					continue
+				}
+				if !validActions[rule.Action] {
+					return fmt.Errorf("endpoint %q rule %d: invalid action %q", name, i, rule.Action)
+				}
+			}
+			continue
+		}
 		if ep.Upstream == "" {
 			return fmt.Errorf("endpoint %q: missing upstream", name)
 		}

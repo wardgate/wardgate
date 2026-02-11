@@ -38,6 +38,24 @@ builds:
       - -X main.date={{.Date}}
       - -X main.configPath=/etc/wardgate-cli/config.yaml
 
+  - id: wardgate-exec
+    main: ./cmd/wardgate-exec
+    binary: wardgate-exec
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
 archives:
   - id: wardgate
     ids:
@@ -58,6 +76,18 @@ archives:
       - wardgate-cli
     formats: [tar.gz]
     name_template: "wardgate-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+  - id: wardgate-exec
+    ids:
+      - wardgate-exec
+    formats: [tar.gz]
+    name_template: "wardgate-exec_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]

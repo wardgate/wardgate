@@ -17,9 +17,11 @@ import (
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/discovery"
+	execpkg "github.com/wardgate/wardgate/internal/exec"
 	"github.com/wardgate/wardgate/internal/imap"
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
+	"github.com/wardgate/wardgate/internal/hub"
 	"github.com/wardgate/wardgate/internal/proxy"
 	"github.com/wardgate/wardgate/internal/smtp"
 )
@@ -162,6 +164,14 @@ func main() {
 			h = auditMiddleware(auditLog, name, smtpHandler)
 			log.Printf("Registered SMTP endpoint: /%s/ -> %s:%d", name, smtpConnCfg.Host, smtpConnCfg.Port)
 
+		case "exec":
+			execHandler := execpkg.NewHandler(engine, name)
+			if approvalMgr != nil {
+				execHandler.SetApprovalManager(approvalMgr)
+			}
+			h = auditMiddleware(auditLog, name, execHandler)
+			log.Printf("Registered exec endpoint: /%s/", name)
+
 		default: // "http" or unspecified
 			p := proxy.NewWithName(name, endpoint, vault, engine)
 			if approvalMgr != nil {
@@ -221,6 +231,28 @@ func main() {
 		} else {
 			log.Printf("Warning: admin_key_env %s is set but empty, admin UI disabled", cfg.Server.AdminKeyEnv)
 		}
+	}
+
+	// Register conclave hub if conclaves are configured
+	if cfg.Conclaves != nil && len(cfg.Conclaves) > 0 {
+		conclaveConfigs := make(map[string]hub.ConclaveConfig, len(cfg.Conclaves))
+		for name, cc := range cfg.Conclaves {
+			conclaveConfigs[name] = hub.ConclaveConfig{
+				Name:   name,
+				KeyEnv: cc.KeyEnv,
+			}
+		}
+		conclaveHub := hub.NewHub(version, conclaveConfigs)
+		rootMux.Handle("/conclaves/ws", conclaveHub)
+
+		// Conclave exec handler (behind agent auth)
+		conclaveExecHandler := hub.NewExecHandler(conclaveHub, cfg.Conclaves)
+		if approvalMgr != nil {
+			conclaveExecHandler.SetApprovalManager(approvalMgr)
+		}
+		apiMux.Handle("/conclaves/", http.StripPrefix("/conclaves", auditMiddleware(auditLog, "conclaves", conclaveExecHandler)))
+
+		log.Printf("Conclave hub enabled (%d conclaves configured)", len(cfg.Conclaves))
 	}
 
 	// All other requests go through agent auth

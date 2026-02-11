@@ -2,6 +2,7 @@
 config.yaml
 /wardgate
 /wardgate-cli
+/wardgate-exec
 /config/
 
 # Zensical

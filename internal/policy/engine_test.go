@@ -260,3 +260,159 @@ func TestEngine_RateLimitPerRule(t *testing.T) {
 		t.Errorf("GET should still be allowed, got %v", decision.Action)
 	}
 }
+
+// --- EvaluateExec tests ---
+
+func TestEngine_EvaluateExec_CommandMatch(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "rg"}, Action: "allow"},
+		{Match: config.Match{Command: "*"}, Action: "deny"},
+	}
+	engine := New(rules)
+
+	decision := engine.EvaluateExec("rg", "TODO .", "/data", "agent-1")
+	if decision.Action != Allow {
+		t.Errorf("expected Allow for 'rg', got %v", decision.Action)
+	}
+
+	decision = engine.EvaluateExec("rm", "-rf /", "/data", "agent-1")
+	if decision.Action != Deny {
+		t.Errorf("expected Deny for 'rm', got %v", decision.Action)
+	}
+}
+
+func TestEngine_EvaluateExec_CommandWildcard(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "*"}, Action: "allow"},
+	}
+	engine := New(rules)
+
+	for _, cmd := range []string{"cat", "rg", "git", "rm", "python3"} {
+		decision := engine.EvaluateExec(cmd, "", "/data", "agent-1")
+		if decision.Action != Allow {
+			t.Errorf("expected Allow for %q with wildcard, got %v", cmd, decision.Action)
+		}
+	}
+}
+
+func TestEngine_EvaluateExec_CommandGlob(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "python*"}, Action: "allow"},
+		{Match: config.Match{Command: "*"}, Action: "deny"},
+	}
+	engine := New(rules)
+
+	tests := []struct {
+		command string
+		expect  Action
+	}{
+		{"python", Allow},
+		{"python3", Allow},
+		{"python3.11", Allow},
+		{"ruby", Deny},
+		{"node", Deny},
+	}
+
+	for _, tt := range tests {
+		decision := engine.EvaluateExec(tt.command, "", "/data", "agent-1")
+		if decision.Action != tt.expect {
+			t.Errorf("command %q: expected %v, got %v", tt.command, tt.expect, decision.Action)
+		}
+	}
+}
+
+func TestEngine_EvaluateExec_ArgsPattern(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "git", ArgsPattern: "^(status|log|diff)"}, Action: "allow"},
+		{Match: config.Match{Command: "git"}, Action: "deny", Message: "write ops not allowed"},
+	}
+	engine := New(rules)
+
+	tests := []struct {
+		args   string
+		expect Action
+	}{
+		{"status", Allow},
+		{"log --oneline", Allow},
+		{"diff HEAD", Allow},
+		{"push origin main", Deny},
+		{"commit -m fix", Deny},
+		{"rebase -i HEAD~3", Deny},
+	}
+
+	for _, tt := range tests {
+		decision := engine.EvaluateExec("git", tt.args, "/data", "agent-1")
+		if decision.Action != tt.expect {
+			t.Errorf("git %s: expected %v, got %v", tt.args, tt.expect, decision.Action)
+		}
+	}
+}
+
+func TestEngine_EvaluateExec_CwdPattern(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "*", CwdPattern: "/data/vault/**"}, Action: "allow"},
+		{Match: config.Match{Command: "*"}, Action: "deny", Message: "wrong directory"},
+	}
+	engine := New(rules)
+
+	tests := []struct {
+		cwd    string
+		expect Action
+	}{
+		{"/data/vault/notes", Allow},
+		{"/data/vault/notes/2024", Allow},
+		{"/home/user", Deny},
+		{"/data/other", Deny},
+	}
+
+	for _, tt := range tests {
+		decision := engine.EvaluateExec("cat", "file.txt", tt.cwd, "agent-1")
+		if decision.Action != tt.expect {
+			t.Errorf("cwd %s: expected %v, got %v", tt.cwd, tt.expect, decision.Action)
+		}
+	}
+}
+
+func TestEngine_EvaluateExec_NoMatchDefaultDeny(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "cat"}, Action: "allow"},
+	}
+	engine := New(rules)
+
+	decision := engine.EvaluateExec("rm", "", "/data", "agent-1")
+	if decision.Action != Deny {
+		t.Errorf("expected Deny for unmatched command, got %v", decision.Action)
+	}
+	if decision.Message == "" {
+		t.Error("expected default deny message")
+	}
+}
+
+func TestEngine_EvaluateExec_FirstMatchWins(t *testing.T) {
+	rules := []config.Rule{
+		{Match: config.Match{Command: "git", ArgsPattern: "^status"}, Action: "allow"},
+		{Match: config.Match{Command: "git"}, Action: "deny", Message: "all other git ops denied"},
+	}
+	engine := New(rules)
+
+	// First rule should match
+	decision := engine.EvaluateExec("git", "status", "/data", "agent-1")
+	if decision.Action != Allow {
+		t.Errorf("expected Allow for 'git status' (first match), got %v", decision.Action)
+	}
+
+	// Second rule should match
+	decision = engine.EvaluateExec("git", "push", "/data", "agent-1")
+	if decision.Action != Deny {
+		t.Errorf("expected Deny for 'git push' (second match), got %v", decision.Action)
+	}
+}
+
+func TestEngine_EvaluateExec_EmptyRulesetDeniesAll(t *testing.T) {
+	engine := New(nil)
+
+	decision := engine.EvaluateExec("cat", "file.txt", "/data", "agent-1")
+	if decision.Action != Deny {
+		t.Errorf("expected Deny for empty ruleset, got %v", decision.Action)
+	}
+}

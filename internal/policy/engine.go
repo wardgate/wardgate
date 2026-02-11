@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
@@ -100,6 +101,65 @@ func (e *Engine) EvaluateWithKey(method, path, key string) Decision {
 		Action:  Deny,
 		Message: "no matching rule - default deny",
 	}
+}
+
+// EvaluateExec checks exec rules and returns a decision.
+// command is the resolved absolute path, args is the joined argument string, cwd is the working directory.
+func (e *Engine) EvaluateExec(command, args, cwd, key string) Decision {
+	for i, rule := range e.rules {
+		if e.matchExecRule(rule, command, args, cwd) {
+			// Check time range
+			if rule.TimeRange != nil && !e.inTimeRange(rule.TimeRange) {
+				continue
+			}
+
+			// Check rate limit
+			if reg, ok := e.rateLimits[i]; ok {
+				if !reg.Allow(key) {
+					return Decision{
+						Action:  RateLimited,
+						Message: "rate limit exceeded",
+					}
+				}
+			}
+
+			return Decision{
+				Action:  parseAction(rule.Action),
+				Message: rule.Message,
+			}
+		}
+	}
+	// Default deny if no rules match
+	return Decision{
+		Action:  Deny,
+		Message: "no matching rule - default deny",
+	}
+}
+
+func (e *Engine) matchExecRule(rule config.Rule, command, args, cwd string) bool {
+	// Check command pattern
+	if rule.Match.Command != "" && rule.Match.Command != "*" {
+		if !matchGlob(rule.Match.Command, command) {
+			return false
+		}
+	}
+
+	// Check args pattern (regex)
+	if rule.Match.ArgsPattern != "" {
+		matched, err := regexp.MatchString(rule.Match.ArgsPattern, args)
+		if err != nil || !matched {
+			return false
+		}
+	}
+
+	// Check cwd pattern
+	if rule.Match.CwdPattern != "" {
+		if !matchGlob(rule.Match.CwdPattern, cwd) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (e *Engine) matchRule(rule config.Rule, method, path string) bool {
