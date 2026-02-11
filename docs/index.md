@@ -4,11 +4,11 @@
 
 # Wardgate Documentation
 
-Wardgate is a security proxy that sits between AI agents and external services, providing credential isolation, access control, and audit logging.
+Wardgate is a security gateway for AI agents. It provides credential-isolated API proxying and policy-gated remote command execution (conclaves), with audit logging, approval workflows, and sensitive data filtering.
 
-## Quick Start with Presets
+## Quick Start
 
-The easiest way to configure Wardgate is using **presets** - pre-configured settings for popular APIs:
+### API Gateway -- proxy API calls with credential isolation
 
 ```yaml
 endpoints:
@@ -22,36 +22,55 @@ endpoints:
       delete_tasks: deny
 ```
 
-**Included presets:** `todoist`, `github`, `cloudflare`, `google-calendar`, `postmark`, `sentry`, `plausible`
+**Included presets:** `todoist`, `github`, `cloudflare`, `google-calendar`, `postmark`, `sentry`, `plausible`, `imap`, `smtp`, `pingping`
 
-See the **[Presets Reference](presets.md)** for all capabilities and examples.
+### Conclaves -- isolated remote execution for agent commands
+
+```yaml
+conclaves:
+  obsidian:
+    description: "Obsidian vault (personal notes)"
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    rules:
+      - match: { command: "rg" }
+        action: allow
+      - match: { command: "tee" }
+        action: ask
+      - match: { command: "*" }
+        action: deny
+```
 
 ## Documentation
 
-- [Presets Reference](presets.md) - Included presets and capabilities and how to make your own
-- [Configuration Reference](config.md) - All configuration options
-- [Security Architecture](architecture.md) - How Wardgate protects your credentials
-- [Policy System](policies.md) - Writing and configuring rules
-- [Conclaves](conclaves.md) - Isolated remote execution environments for agent tool calls
-- [Deployment Guide](deployment.md) - Docker, Caddy, and production setup
-- [wardgate-cli](wardgate-cli.md) - Restricted HTTP client and conclave exec for agents
+### Core Concepts
 
-## Sensitive Data Filtering
+- [Security Architecture](architecture.md) -- How Wardgate protects your credentials and isolates execution
+- [Policy System](policies.md) -- Writing and configuring rules (allow/deny/ask, rate limits, time ranges)
 
-Wardgate automatically blocks OTP codes, verification links, and API keys in responses by default. This prevents prompt injection attacks from extracting 2FA codes or credentials. Configure per-endpoint in your config. See [Configuration Reference](config.md#sensitive-data-filtering) for details.
+### API Gateway
 
-## Endpoint Discovery API
+- [Presets Reference](presets.md) -- Built-in presets, capabilities, and how to create your own
+- [Configuration Reference](config.md) -- All configuration options including sensitive data filtering
 
-Agents can query `GET /endpoints` to discover available endpoints. See the [README](../README.md#endpoint-discovery-api) for details.
+### Conclaves
+
+- [Conclaves](conclaves.md) -- Isolated remote execution environments, policy rules, deployment
+- [wardgate-cli](wardgate-cli.md) -- Restricted HTTP client and conclave exec tool for agents
+
+### Operations
+
+- [Installation](../INSTALL.md) -- Pre-built binaries, Docker, building from source
+- [Deployment Guide](deployment.md) -- Docker, Caddy, and production setup
 
 ## Admin UI & CLI
 
-Wardgate includes a web dashboard (`/ui/`) and CLI for managing approval requests. Configure `admin_key_env` in your server settings to enable. See the [README](../README.md#admin-ui--cli) for details.
+Wardgate includes a web dashboard (`/ui/`) and CLI for managing approval requests. Configure `admin_key_env` in your server settings to enable. See the [README](../README.md) for an overview.
 
 The dashboard includes:
-- **Pending** - Requests awaiting approval
-- **History** - Past approval decisions
-- **Logs** - Recent request activity with filtering
+- **Pending** -- Requests awaiting approval
+- **History** -- Past approval decisions
+- **Logs** -- Recent request activity with filtering
 
 ## Quick Links
 
