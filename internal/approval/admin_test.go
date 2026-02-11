@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/wardgate/wardgate/internal/audit"
+	"github.com/wardgate/wardgate/internal/grants"
 )
 
 func TestAdminHandler_Unauthorized(t *testing.T) {
@@ -402,6 +404,250 @@ func TestAdminHandler_LogsFiltersMetadata(t *testing.T) {
 	}
 	if len(response.Agents) != 2 {
 		t.Errorf("expected 2 agents, got %d", len(response.Agents))
+	}
+}
+
+func TestApproveWithGrant_10m(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	done := make(chan bool)
+	go func() {
+		m.RequestApprovalWithContent(context.Background(), ApprovalRequest{
+			Endpoint: "conclave:obsidian",
+			Method:   "exec",
+			Path:     "rm",
+			AgentID:  "agent-1",
+		})
+		done <- true
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	id, _ := m.GetPending()
+
+	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/approve?grant=10m", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	<-done
+
+	// Verify a grant was created
+	grantList := grantStore.List()
+	if len(grantList) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grantList))
+	}
+	g := grantList[0]
+	if g.ExpiresAt == nil {
+		t.Fatal("expected expiry for 10m grant")
+	}
+	// Should expire roughly 10m from now (within 1 minute tolerance)
+	if time.Until(*g.ExpiresAt) < 9*time.Minute || time.Until(*g.ExpiresAt) > 11*time.Minute {
+		t.Errorf("expected ~10m expiry, got %v", time.Until(*g.ExpiresAt))
+	}
+}
+
+func TestApproveWithGrant_1h(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	done := make(chan bool)
+	go func() {
+		m.RequestApprovalWithContent(context.Background(), ApprovalRequest{
+			Endpoint: "endpoint:todoist",
+			Method:   "DELETE",
+			Path:     "/tasks/123",
+			AgentID:  "tessa",
+		})
+		done <- true
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	id, _ := m.GetPending()
+
+	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/approve?grant=1h", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	<-done
+
+	grantList := grantStore.List()
+	if len(grantList) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grantList))
+	}
+	if grantList[0].ExpiresAt == nil {
+		t.Fatal("expected expiry for 1h grant")
+	}
+	if time.Until(*grantList[0].ExpiresAt) < 59*time.Minute {
+		t.Errorf("expected ~1h expiry, got %v", time.Until(*grantList[0].ExpiresAt))
+	}
+}
+
+func TestApproveWithGrant_Always(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	done := make(chan bool)
+	go func() {
+		m.RequestApprovalWithContent(context.Background(), ApprovalRequest{
+			Endpoint: "conclave:obsidian",
+			Method:   "exec",
+			Path:     "rg",
+			AgentID:  "agent-1",
+		})
+		done <- true
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	id, _ := m.GetPending()
+
+	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/approve?grant=always", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	<-done
+
+	grantList := grantStore.List()
+	if len(grantList) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grantList))
+	}
+	if grantList[0].ExpiresAt != nil {
+		t.Error("permanent grant should have nil ExpiresAt")
+	}
+}
+
+func TestApproveWithoutGrant(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	done := make(chan bool)
+	go func() {
+		m.RequestApprovalWithContent(context.Background(), ApprovalRequest{
+			Endpoint: "test-api",
+			Method:   "POST",
+			Path:     "/tasks",
+			AgentID:  "agent-1",
+		})
+		done <- true
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	id, _ := m.GetPending()
+
+	// Approve without grant param -- no grant should be created
+	req := httptest.NewRequest("POST", "/ui/api/approvals/"+id+"/approve", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	<-done
+
+	if len(grantStore.List()) != 0 {
+		t.Error("no grant should be created without grant param")
+	}
+}
+
+func TestAdminHandler_GrantsList(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	grantStore.Add(grants.Grant{
+		AgentID: "tessa",
+		Scope:   "conclave:obsidian",
+		Match:   grants.GrantMatch{Command: "rg"},
+		Action:  "allow",
+		Reason:  "test",
+	})
+
+	req := httptest.NewRequest("GET", "/ui/api/grants", nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Grants []*grants.Grant `json:"grants"`
+	}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if len(resp.Grants) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(resp.Grants))
+	}
+}
+
+func TestAdminHandler_GrantsAdd(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	body := `{"agent_id":"tessa","scope":"conclave:obsidian","match":{"command":"rg"},"action":"allow","reason":"CLI add"}`
+	req := httptest.NewRequest("POST", "/ui/api/grants", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(grantStore.List()) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grantStore.List()))
+	}
+}
+
+func TestAdminHandler_GrantsRevoke(t *testing.T) {
+	m := NewManager("http://localhost:8080", 5*time.Second)
+	grantStore := grants.NewStore("")
+	h := NewAdminHandler(m, "secret-admin-key")
+	h.SetGrantStore(grantStore)
+
+	grantStore.Add(grants.Grant{
+		AgentID: "tessa",
+		Scope:   "conclave:obsidian",
+		Match:   grants.GrantMatch{Command: "rg"},
+		Action:  "allow",
+	})
+	grantID := grantStore.List()[0].ID
+
+	req := httptest.NewRequest("DELETE", "/ui/api/grants/"+grantID, nil)
+	req.Header.Set("Authorization", "Bearer secret-admin-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(grantStore.List()) != 0 {
+		t.Error("grant should be revoked")
 	}
 }
 

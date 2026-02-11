@@ -544,6 +544,9 @@ const dashboardHTML = `<!DOCTYPE html>
           '</div>' +
           (showActions ? '<div class="card-actions">' +
             '<button class="btn btn-success btn-sm" onclick="approve(\'' + req.id + '\')">Approve</button>' +
+            '<button class="btn btn-success btn-sm" onclick="approve(\'' + req.id + '\', \'10m\')" title="Approve and allow for 10 minutes">+10m</button>' +
+            '<button class="btn btn-success btn-sm" onclick="approve(\'' + req.id + '\', \'1h\')" title="Approve and allow for 1 hour">+1h</button>' +
+            '<button class="btn btn-success btn-sm" onclick="approve(\'' + req.id + '\', \'always\')" title="Approve and always allow">Always</button>' +
             '<button class="btn btn-danger btn-sm" onclick="deny(\'' + req.id + '\')">Deny</button>' +
           '</div>' : '<span class="status status-' + req.status + '">' + req.status + '</span>') +
         '</div>' +
@@ -624,10 +627,14 @@ const dashboardHTML = `<!DOCTYPE html>
     }
     
     // Actions
-    async function approve(id) {
+    async function approve(id, grant) {
       try {
-        await api('/approvals/' + id + '/approve', 'POST');
-        showToast('Request approved');
+        var url = '/approvals/' + id + '/approve';
+        if (grant) url += '?grant=' + grant;
+        await api(url, 'POST');
+        var msg = 'Request approved';
+        if (grant) msg += ' (grant: ' + grant + ')';
+        showToast(msg);
         loadPending();
         loadHistory();
       } catch (err) {

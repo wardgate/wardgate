@@ -10,6 +10,7 @@ import (
 	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -47,6 +48,12 @@ type ExecHandler struct {
 	engines     map[string]*policy.Engine        // conclave name -> policy engine
 	configs     map[string]config.ConclaveConfig  // conclave name -> config
 	approvalMgr *approval.Manager
+	grantStore  *grants.Store
+}
+
+// SetGrantStore sets the grant store for dynamic policy overrides.
+func (h *ExecHandler) SetGrantStore(s *grants.Store) {
+	h.grantStore = s
 }
 
 // NewExecHandler creates a new conclave exec handler.
@@ -158,6 +165,13 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	needsApproval := false
 
 	for _, seg := range segments {
+		// Check grants before static policy
+		if h.grantStore != nil {
+			if g := h.grantStore.CheckExec(agentID, "conclave:"+conclaveName, seg.Command, seg.Args, req.Cwd); g != nil {
+				continue // grant allows this segment
+			}
+		}
+
 		decision := engine.EvaluateExec(seg.Command, seg.Args, req.Cwd, agentID)
 
 		switch decision.Action {

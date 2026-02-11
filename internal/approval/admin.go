@@ -2,12 +2,14 @@ package approval
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/wardgate/wardgate/internal/audit"
+	"github.com/wardgate/wardgate/internal/grants"
 )
 
 // RequestView is the JSON representation of a Request for the admin API.
@@ -52,9 +54,15 @@ func toView(r *Request) RequestView {
 
 // AdminHandler provides the admin API for managing approvals.
 type AdminHandler struct {
-	manager  *Manager
-	adminKey string
-	logStore *audit.Store
+	manager    *Manager
+	adminKey   string
+	logStore   *audit.Store
+	grantStore *grants.Store
+}
+
+// SetGrantStore sets the grant store for creating grants on approval.
+func (h *AdminHandler) SetGrantStore(s *grants.Store) {
+	h.grantStore = s
 }
 
 // NewAdminHandler creates a new admin handler.
@@ -96,6 +104,12 @@ func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleDeny(w, r)
 	case strings.HasPrefix(path, "/ui/api/approvals/") && r.Method == http.MethodGet:
 		h.handleGet(w, r)
+	case path == "/ui/api/grants" && r.Method == http.MethodGet:
+		h.handleGrantsList(w, r)
+	case path == "/ui/api/grants" && r.Method == http.MethodPost:
+		h.handleGrantsAdd(w, r)
+	case strings.HasPrefix(path, "/ui/api/grants/") && r.Method == http.MethodDelete:
+		h.handleGrantsRevoke(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -165,6 +179,9 @@ func (h *AdminHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(path, "/ui/api/approvals/")
 	id = strings.TrimSuffix(id, "/approve")
 
+	// Capture the request before approving (it may be removed after approval)
+	approvalReq, _ := h.manager.Get(id)
+
 	if err := h.manager.ApproveByID(id); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.NotFound(w, r)
@@ -174,10 +191,59 @@ func (h *AdminHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle grant creation if requested
+	grantParam := r.URL.Query().Get("grant")
+	if grantParam != "" && h.grantStore != nil && approvalReq != nil {
+		if err := h.createGrant(grantParam, approvalReq); err != nil {
+			// Grant creation failed, but approval succeeded -- log and continue
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":        "approved",
+				"grant_error":   err.Error(),
+			})
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "approved",
 	})
+}
+
+func (h *AdminHandler) createGrant(grantParam string, req *Request) error {
+	var expiresAt *time.Time
+
+	switch grantParam {
+	case "always":
+		// permanent, nil expiry
+	default:
+		// Parse as duration
+		d, err := time.ParseDuration(grantParam)
+		if err != nil {
+			return fmt.Errorf("invalid grant duration %q: %w", grantParam, err)
+		}
+		exp := time.Now().Add(d)
+		expiresAt = &exp
+	}
+
+	g := grants.Grant{
+		AgentID:   req.AgentID,
+		Scope:     req.Endpoint,
+		Action:    "allow",
+		Reason:    fmt.Sprintf("approved via UI (grant=%s)", grantParam),
+		ExpiresAt: expiresAt,
+	}
+
+	// Set match fields based on scope type
+	if strings.HasPrefix(req.Endpoint, "conclave:") {
+		g.Match = grants.GrantMatch{Command: req.Path}
+	} else {
+		g.Match = grants.GrantMatch{Method: req.Method, Path: req.Path}
+	}
+
+	h.grantStore.Add(g)
+	return nil
 }
 
 func (h *AdminHandler) handleDeny(w http.ResponseWriter, r *http.Request) {
@@ -235,6 +301,52 @@ func (h *AdminHandler) handleLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs": logs,
 	})
+}
+
+func (h *AdminHandler) handleGrantsList(w http.ResponseWriter, r *http.Request) {
+	if h.grantStore == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"grants": []interface{}{}})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"grants": h.grantStore.List(),
+	})
+}
+
+func (h *AdminHandler) handleGrantsAdd(w http.ResponseWriter, r *http.Request) {
+	if h.grantStore == nil {
+		http.Error(w, "grants not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	var g grants.Grant
+	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	added := h.grantStore.Add(g)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(added)
+}
+
+func (h *AdminHandler) handleGrantsRevoke(w http.ResponseWriter, r *http.Request) {
+	if h.grantStore == nil {
+		http.Error(w, "grants not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/ui/api/grants/")
+	if err := h.grantStore.Revoke(id); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "revoked"})
 }
 
 func (h *AdminHandler) handleLogsFilters(w http.ResponseWriter, r *http.Request) {

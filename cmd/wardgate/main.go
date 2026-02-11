@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/discovery"
 	execpkg "github.com/wardgate/wardgate/internal/exec"
+	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/hub"
 	"github.com/wardgate/wardgate/internal/imap"
 	"github.com/wardgate/wardgate/internal/manage"
@@ -46,6 +48,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "conclave" {
 		runConclaveCmd(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "grants" {
+		runGrantsCmd(os.Args[2:])
 		return
 	}
 
@@ -110,6 +116,18 @@ func main() {
 			log.Printf("Webhook notifications enabled")
 		}
 	}
+
+	// Load grant store
+	grantsFile := "grants.json"
+	if cfg.Server.GrantsFile != "" {
+		grantsFile = cfg.Server.GrantsFile
+	}
+	grantStore, err := grants.LoadStore(grantsFile)
+	if err != nil {
+		log.Printf("Warning: could not load grants from %s: %v (starting with empty grants)", grantsFile, err)
+		grantStore = grants.NewStore(grantsFile)
+	}
+	log.Printf("Loaded %d active grants from %s", len(grantStore.List()), grantsFile)
 
 	// Create mux for API endpoints (requires agent auth)
 	apiMux := http.NewServeMux()
@@ -186,6 +204,7 @@ func main() {
 			if approvalMgr != nil {
 				p.SetApprovalManager(approvalMgr)
 			}
+			p.SetGrantStore(grantStore)
 			h = auditMiddleware(auditLog, name, p)
 			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, endpoint.Upstream)
 		}
@@ -240,6 +259,7 @@ func main() {
 			}
 			adminHandler := approval.NewAdminHandler(approvalMgr, adminKey)
 			adminHandler.SetLogStore(logStore)
+			adminHandler.SetGrantStore(grantStore)
 			uiHandler := approval.NewUIHandler(adminHandler)
 			rootMux.Handle("/ui/", uiHandler)
 			log.Printf("Admin UI enabled at /ui/")
@@ -265,6 +285,7 @@ func main() {
 		if approvalMgr != nil {
 			conclaveExecHandler.SetApprovalManager(approvalMgr)
 		}
+		conclaveExecHandler.SetGrantStore(grantStore)
 		apiMux.Handle("/conclaves/", http.StripPrefix("/conclaves", auditMiddleware(auditLog, "conclaves", conclaveExecHandler)))
 
 		log.Printf("Conclave hub enabled (%d conclaves configured)", len(cfg.Conclaves))
@@ -583,6 +604,151 @@ func runConclaveCmd(args []string) {
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown conclave subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func loadAdminClient() *CLIClient {
+	_ = godotenv.Load(".env") // best effort
+
+	baseURL := os.Getenv("WARDGATE_URL")
+	adminKey := os.Getenv("WARDGATE_ADMIN_KEY")
+
+	// Try reading config.yaml for defaults
+	if baseURL == "" || adminKey == "" {
+		if cfg, err := config.LoadFromFile("config.yaml"); err == nil {
+			if baseURL == "" {
+				if cfg.Server.BaseURL != "" {
+					baseURL = cfg.Server.BaseURL
+				} else if cfg.Server.Listen != "" {
+					baseURL = "http://localhost" + cfg.Server.Listen
+				}
+			}
+			if adminKey == "" && cfg.Server.AdminKeyEnv != "" {
+				adminKey = os.Getenv(cfg.Server.AdminKeyEnv)
+			}
+		}
+	}
+
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	if adminKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: WARDGATE_ADMIN_KEY not found (set env var or configure admin_key_env in config.yaml)")
+		os.Exit(1)
+	}
+	return NewCLIClient(CLIConfig{BaseURL: baseURL, AdminKey: adminKey})
+}
+
+func runGrantsCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: wardgate grants <list|add|revoke> [options]\n")
+		os.Exit(1)
+	}
+
+	client := loadAdminClient()
+
+	switch args[0] {
+	case "list":
+		body, err := client.request("GET", "/ui/api/grants")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		var resp struct {
+			Grants []grants.Grant `json:"grants"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+			os.Exit(1)
+		}
+		if len(resp.Grants) == 0 {
+			fmt.Println("No active grants.")
+			return
+		}
+		for _, g := range resp.Grants {
+			expiry := "permanent"
+			if g.ExpiresAt != nil {
+				expiry = fmt.Sprintf("expires %s", g.ExpiresAt.Format(time.RFC3339))
+			}
+			fmt.Printf("%-20s agent=%-10s scope=%-25s action=%-6s %s\n", g.ID, g.AgentID, g.Scope, g.Action, expiry)
+			if g.Match.Command != "" {
+				fmt.Printf("  command=%s\n", g.Match.Command)
+			}
+			if g.Match.Method != "" {
+				fmt.Printf("  method=%s path=%s\n", g.Match.Method, g.Match.Path)
+			}
+		}
+
+	case "add":
+		if len(args) < 4 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate grants add <agent> <scope> <match> [--duration <dur>]\n")
+			fmt.Fprintf(os.Stderr, "  Example: wardgate grants add tessa conclave:obsidian command:rg\n")
+			fmt.Fprintf(os.Stderr, "  Example: wardgate grants add tessa endpoint:todoist method:DELETE,path:/tasks/*\n")
+			os.Exit(1)
+		}
+
+		g := grants.Grant{
+			AgentID: args[1],
+			Scope:   args[2],
+			Action:  "allow",
+			Reason:  "added via CLI",
+		}
+
+		// Parse match
+		matchStr := args[3]
+		for _, part := range strings.Split(matchStr, ",") {
+			kv := strings.SplitN(part, ":", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			switch kv[0] {
+			case "command":
+				g.Match.Command = kv[1]
+			case "method":
+				g.Match.Method = kv[1]
+			case "path":
+				g.Match.Path = kv[1]
+			}
+		}
+
+		// Parse optional duration
+		for i := 4; i < len(args)-1; i++ {
+			if args[i] == "--duration" {
+				d, err := time.ParseDuration(args[i+1])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Invalid duration: %v\n", err)
+					os.Exit(1)
+				}
+				exp := time.Now().Add(d)
+				g.ExpiresAt = &exp
+			}
+		}
+
+		payload, _ := json.Marshal(g)
+		body, err := client.requestBody("POST", "/ui/api/grants", payload)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		var added grants.Grant
+		json.Unmarshal(body, &added)
+		fmt.Printf("Grant %s added for agent %q on %s\n", added.ID, g.AgentID, g.Scope)
+
+	case "revoke":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: wardgate grants revoke <grant-id>\n")
+			os.Exit(1)
+		}
+		_, err := client.request("DELETE", "/ui/api/grants/"+args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Grant %s revoked.\n", args[1])
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown grants subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/filter"
+	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -28,6 +29,12 @@ type Proxy struct {
 	timeout      time.Duration
 	approvals    *approval.Manager
 	filter       *filter.Filter
+	grantStore   *grants.Store
+}
+
+// SetGrantStore sets the grant store for dynamic policy overrides.
+func (p *Proxy) SetGrantStore(s *grants.Store) {
+	p.grantStore = s
 }
 
 // New creates a new proxy for the given endpoint.
@@ -72,32 +79,43 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		agentID = r.RemoteAddr
 	}
 
-	// Evaluate policy with rate limit key
-	decision := p.engine.EvaluateWithKey(r.Method, r.URL.Path, agentID)
-	if decision.Action == policy.Deny {
-		http.Error(w, decision.Message, http.StatusForbidden)
-		return
+	// Check grants before static policy
+	grantAllowed := false
+	if p.grantStore != nil {
+		scope := "endpoint:" + p.endpointName
+		if g := p.grantStore.CheckHTTP(agentID, scope, r.Method, r.URL.Path); g != nil {
+			grantAllowed = true
+		}
 	}
-	if decision.Action == policy.RateLimited {
-		w.Header().Set("Retry-After", "60")
-		http.Error(w, decision.Message, http.StatusTooManyRequests)
-		return
-	}
-	if decision.Action == policy.Ask {
-		if p.approvals == nil {
-			http.Error(w, "ask action requires approval manager configuration", http.StatusServiceUnavailable)
+
+	if !grantAllowed {
+		// Evaluate policy with rate limit key
+		decision := p.engine.EvaluateWithKey(r.Method, r.URL.Path, agentID)
+		if decision.Action == policy.Deny {
+			http.Error(w, decision.Message, http.StatusForbidden)
 			return
 		}
-		approved, err := p.approvals.RequestApproval(r.Context(), p.endpointName, r.Method, r.URL.Path, agentID)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("approval failed: %v", err), http.StatusForbidden)
+		if decision.Action == policy.RateLimited {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, decision.Message, http.StatusTooManyRequests)
 			return
 		}
-		if !approved {
-			http.Error(w, "request denied by approver", http.StatusForbidden)
-			return
+		if decision.Action == policy.Ask {
+			if p.approvals == nil {
+				http.Error(w, "ask action requires approval manager configuration", http.StatusServiceUnavailable)
+				return
+			}
+			approved, err := p.approvals.RequestApproval(r.Context(), p.endpointName, r.Method, r.URL.Path, agentID)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("approval failed: %v", err), http.StatusForbidden)
+				return
+			}
+			if !approved {
+				http.Error(w, "request denied by approver", http.StatusForbidden)
+				return
+			}
+			// Approved - continue to proxy
 		}
-		// Approved - continue to proxy
 	}
 
 	// Get credential

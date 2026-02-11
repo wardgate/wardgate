@@ -4,7 +4,13 @@ This document explains how to write and configure policy rules in Wardgate.
 
 ## How Policies Work
 
-When an agent makes a request, Wardgate evaluates rules in order until one matches. The first matching rule determines the action. If no rules match, the request is denied by default.
+When an agent makes a request, Wardgate first checks [dynamic grants](grants.md). If a matching active grant exists, the request is allowed immediately. Otherwise, static rules are evaluated in order until one matches. The first matching rule determines the action. If no rules match, the request is denied by default.
+
+```
+Request → Dynamic Grant Check → Static Rule Evaluation → Default Deny
+              ↓ (match)                ↓ (first match)
+            Allow               allow / deny / ask
+```
 
 ```
 Request: POST /tasks/123/close

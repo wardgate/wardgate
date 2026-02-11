@@ -3,6 +3,7 @@ config.yaml
 config-cli.yaml
 config-exec.yaml
 config.yaml
+grants.json
 /wardgate
 /wardgate-cli
 /wardgate-exec

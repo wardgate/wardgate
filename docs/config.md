@@ -246,10 +246,15 @@ server:
   listen: ":8080"                            # Listen on all interfaces, port 8080
   base_url: "https://wardgate.example.com"   # For links in notifications
   admin_key_env: WARDGATE_ADMIN_KEY          # Enables admin Web UI and CLI
+  grants_file: grants.json                   # Path to dynamic grants file (default: grants.json)
   logging:
     max_entries: 1000                        # Keep last 1000 requests in memory
     store_bodies: false                      # Don't store request bodies by default
 ```
+
+#### Dynamic Grants
+
+Wardgate supports dynamic grants -- runtime-added policy rules that override static rules. Grants can be permanent or time-limited. See [Grants Documentation](grants.md) for full details.
 
 #### Admin UI and CLI
 

@@ -11,6 +11,7 @@ import (
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/filter"
+	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
@@ -382,5 +383,51 @@ func TestProxy_FilterSkipsNonTextContent(t *testing.T) {
 	// Should pass through for non-text content
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200 for non-text content, got %d", rec.Code)
+	}
+}
+
+func TestProxy_GrantOverridesPolicy(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("deleted"))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "secret-token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	// Static policy denies DELETE
+	engine := policy.New([]config.Rule{
+		{Match: config.Match{Method: "DELETE"}, Action: "deny", Message: "no deletes"},
+		{Match: config.Match{Method: "*"}, Action: "allow"},
+	})
+
+	proxy := NewWithName("todoist", endpoint, vault, engine)
+
+	// Add a grant that allows DELETE on endpoint:todoist
+	grantStore := grants.NewStore("")
+	grantStore.Add(grants.Grant{
+		AgentID: "tessa",
+		Scope:   "endpoint:todoist",
+		Match:   grants.GrantMatch{Method: "DELETE", Path: "/tasks/*"},
+		Action:  "allow",
+		Reason:  "test grant",
+	})
+	proxy.SetGrantStore(grantStore)
+
+	req := httptest.NewRequest("DELETE", "/tasks/123", nil)
+	req.Header.Set("X-Agent-ID", "tessa")
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	// Should be allowed by grant, not denied by policy
+	if rec.Code == http.StatusForbidden {
+		t.Error("grant should override static policy deny")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
 	}
 }

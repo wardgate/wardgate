@@ -7,8 +7,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/grants"
 )
 
 func newTestExecHandler(t *testing.T) *ExecHandler {
@@ -334,6 +336,72 @@ func TestConclaveExecHandler_AgentScopeListFiltered(t *testing.T) {
 	}
 	if resp.Conclaves[0].Name != "obsidian" {
 		t.Errorf("expected conclave 'obsidian', got %q", resp.Conclaves[0].Name)
+	}
+}
+
+func TestConclaveExecHandler_GrantOverridesPolicy(t *testing.T) {
+	// Static policy denies "rm", but an active grant for "rm" on conclave:obsidian should allow it
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	h := newTestExecHandler(t)
+
+	// Add a grant that allows "rm" on conclave:obsidian
+	grantStore := grants.NewStore("")
+	grantStore.Add(grants.Grant{
+		AgentID: "agent-1",
+		Scope:   "conclave:obsidian",
+		Match:   grants.GrantMatch{Command: "rm"},
+		Action:  "allow",
+		Reason:  "test grant",
+	})
+	h.SetGrantStore(grantStore)
+
+	body := `{"command":"rm","args":"-rf /tmp/test","raw":"rm -rf /tmp/test","agent_id":"agent-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	// Should NOT be 403 (denied by policy) -- grant should override
+	// Expect 503 (not connected) since the conclave is offline
+	if rec.Code == http.StatusForbidden {
+		t.Error("grant should override static policy deny")
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (not connected), got %d", rec.Code)
+	}
+}
+
+func TestConclaveExecHandler_ExpiredGrantFallsThrough(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	h := newTestExecHandler(t)
+
+	// Add an expired grant
+	expired := time.Now().Add(-1 * time.Hour)
+	grantStore := grants.NewStore("")
+	grantStore.Add(grants.Grant{
+		AgentID:   "agent-1",
+		Scope:     "conclave:obsidian",
+		Match:     grants.GrantMatch{Command: "rm"},
+		Action:    "allow",
+		ExpiresAt: &expired,
+	})
+	h.SetGrantStore(grantStore)
+
+	body := `{"command":"rm","args":"-rf /","raw":"rm -rf /","agent_id":"agent-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	// Expired grant should not override -- static policy should deny
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 (expired grant falls through to deny), got %d", rec.Code)
 	}
 }
 

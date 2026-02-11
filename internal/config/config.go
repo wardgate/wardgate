@@ -209,9 +209,10 @@ type CapabilityDef struct {
 // ServerConfig holds server settings.
 type ServerConfig struct {
 	Listen      string        `yaml:"listen"`
-	BaseURL     string        `yaml:"base_url,omitempty"`      // Base URL for links in notifications
-	AdminKeyEnv string        `yaml:"admin_key_env,omitempty"` // Env var for admin key (for web UI/CLI)
-	Logging     LoggingConfig `yaml:"logging,omitempty"`       // Logging dashboard configuration
+	BaseURL     string        `yaml:"base_url,omitempty"`       // Base URL for links in notifications
+	AdminKeyEnv string        `yaml:"admin_key_env,omitempty"`  // Env var for admin key (for web UI/CLI)
+	GrantsFile  string        `yaml:"grants_file,omitempty"`    // Path to grants file (default: grants.json)
+	Logging     LoggingConfig `yaml:"logging,omitempty"`        // Logging dashboard configuration
 }
 
 // LoggingConfig holds logging dashboard settings.

@@ -48,12 +48,23 @@ type ApprovalListItem struct {
 }
 
 func (c *CLIClient) request(method, path string) ([]byte, error) {
+	return c.requestBody(method, path, nil)
+}
+
+func (c *CLIClient) requestBody(method, path string, payload []byte) ([]byte, error) {
 	url := strings.TrimRight(c.config.BaseURL, "/") + path
-	req, err := http.NewRequest(method, url, nil)
+	var bodyReader io.Reader
+	if payload != nil {
+		bodyReader = strings.NewReader(string(payload))
+	}
+	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.config.AdminKey)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -141,22 +152,7 @@ func runCLI(args []string) {
 		os.Exit(1)
 	}
 
-	// Get configuration from environment
-	baseURL := os.Getenv("WARDGATE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-
-	adminKey := os.Getenv("WARDGATE_ADMIN_KEY")
-	if adminKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: WARDGATE_ADMIN_KEY environment variable is required")
-		os.Exit(1)
-	}
-
-	client := NewCLIClient(CLIConfig{
-		BaseURL:  baseURL,
-		AdminKey: adminKey,
-	})
+	client := loadAdminClient()
 
 	subcommand := args[1]
 	subargs := args[2:]
