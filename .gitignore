@@ -1,5 +1,8 @@
 .env
 config.yaml
+config-cli.yaml
+config-exec.yaml
+config.yaml
 /wardgate
 /wardgate-cli
 /wardgate-exec
