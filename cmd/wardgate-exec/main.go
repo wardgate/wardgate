@@ -34,7 +34,7 @@ func main() {
 	}
 
 	executor := conclave.NewExecutor(cfg)
-	log.Printf("Conclave %q starting (cwd: %s, %s)", cfg.Name, cfg.Cwd, executor.AllowlistSummary())
+	log.Printf("Conclave %q starting (%s)", cfg.Name, executor.AllowlistSummary())
 
 	client := conclave.NewClient(cfg, executor)
 

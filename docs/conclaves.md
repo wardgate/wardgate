@@ -107,7 +107,6 @@ Each conclave runs `wardgate-exec` with its own config:
 server: wss://wardgate.example.com/conclaves/ws
 key: "conclave-secret-key"
 name: obsidian
-cwd: /data/vault
 
 # Optional: local allowlist (defense in depth)
 allowed_bins:

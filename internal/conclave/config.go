@@ -12,7 +12,6 @@ type Config struct {
 	Server         string   `yaml:"server"`                     // WebSocket URL (wss://wardgate.example.com/conclaves/ws)
 	Key            string   `yaml:"key"`                        // Conclave authentication key
 	Name           string   `yaml:"name"`                       // Conclave name
-	Cwd            string   `yaml:"cwd"`                        // Working directory for commands
 	MaxInputBytes  int64    `yaml:"max_input_bytes,omitempty"`  // Max bytes for command input (default: 1MB)
 	MaxOutputBytes int64    `yaml:"max_output_bytes,omitempty"` // Max bytes for command output (default: 10MB)
 	AllowedBins    []string `yaml:"allowed_bins,omitempty"`     // Local binary allowlist (defense in depth)
@@ -62,8 +61,5 @@ func (c *Config) applyDefaults() {
 	}
 	if c.MaxOutputBytes <= 0 {
 		c.MaxOutputBytes = DefaultMaxOutputBytes
-	}
-	if c.Cwd == "" {
-		c.Cwd = "/"
 	}
 }

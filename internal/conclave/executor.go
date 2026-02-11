@@ -36,7 +36,6 @@ type OutputChunk struct {
 
 // Executor runs commands in the conclave environment.
 type Executor struct {
-	cwd            string
 	maxOutputBytes int64
 	allowedBins    map[string]bool // absolute path -> allowed
 }
@@ -48,7 +47,6 @@ func NewExecutor(cfg *Config) *Executor {
 		allowed[bin] = true
 	}
 	return &Executor{
-		cwd:            cfg.Cwd,
 		maxOutputBytes: cfg.MaxOutputBytes,
 		allowedBins:    allowed,
 	}
@@ -85,10 +83,10 @@ func (e *Executor) resolveCommand(name string) (string, error) {
 func (e *Executor) Execute(ctx context.Context, req ExecRequest, onOutput func(OutputChunk)) ExecResult {
 	start := time.Now()
 
-	// Determine working directory
-	cwd := e.cwd
-	if req.Cwd != "" {
-		cwd = req.Cwd
+	// Determine working directory (always provided by gateway; fallback to /)
+	cwd := req.Cwd
+	if cwd == "" {
+		cwd = "/"
 	}
 
 	// Resolve the command binary
