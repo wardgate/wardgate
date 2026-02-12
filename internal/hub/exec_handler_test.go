@@ -75,7 +75,7 @@ func TestConclaveExecHandler_ListConclaves(t *testing.T) {
 func TestConclaveExecHandler_UnknownConclave(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"agent-1"}`
+	body := `{"raw":"cat file.txt","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/unknown/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
@@ -89,7 +89,7 @@ func TestConclaveExecHandler_UnknownConclave(t *testing.T) {
 func TestConclaveExecHandler_PolicyDeny(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	body := `{"command":"rm","args":"-rf /","raw":"rm -rf /","agent_id":"agent-1"}`
+	body := `{"raw":"rm -rf /","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
@@ -109,7 +109,7 @@ func TestConclaveExecHandler_PolicyDeny(t *testing.T) {
 func TestConclaveExecHandler_PolicyAllow_NotConnected(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"agent-1"}`
+	body := `{"raw":"cat file.txt","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
@@ -143,7 +143,7 @@ func TestConclaveExecHandler_InvalidBody(t *testing.T) {
 	}
 }
 
-func TestConclaveExecHandler_EmptySegments(t *testing.T) {
+func TestConclaveExecHandler_EmptyCommand(t *testing.T) {
 	h := newTestExecHandler(t)
 
 	body := `{"raw":"","agent_id":"agent-1"}`
@@ -160,8 +160,8 @@ func TestConclaveExecHandler_EmptySegments(t *testing.T) {
 func TestConclaveExecHandler_PipelineDenyOneSegment(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	// Pipeline: rg (allowed) | rm (denied)
-	body := `{"segments":[{"command":"rg","args":"TODO"},{"command":"rm","args":"-rf /"}],"raw":"rg TODO | rm -rf /","agent_id":"agent-1"}`
+	// Pipeline: rg (allowed) | rm (denied) — gateway parses the raw command
+	body := `{"raw":"rg TODO | rm -rf /","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
@@ -181,7 +181,7 @@ func TestConclaveExecHandler_PipelineDenyOneSegment(t *testing.T) {
 func TestConclaveExecHandler_AskWithoutManager(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	body := `{"command":"tee","args":"output.txt","raw":"tee output.txt","agent_id":"agent-1"}`
+	body := `{"raw":"tee output.txt","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
@@ -223,7 +223,7 @@ func TestConclaveExecHandler_AgentNotAllowed(t *testing.T) {
 
 	h := NewExecHandler(hub, conclaves)
 
-	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"bob"}`
+	body := `{"raw":"cat file.txt","agent_id":"bob"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	req.Header.Set("X-Agent-ID", "bob")
 	rec := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestConclaveExecHandler_AgentAllowed(t *testing.T) {
 
 	h := NewExecHandler(hub, conclaves)
 
-	body := `{"command":"cat","args":"file.txt","raw":"cat file.txt","agent_id":"tessa"}`
+	body := `{"raw":"cat file.txt","agent_id":"tessa"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	req.Header.Set("X-Agent-ID", "tessa")
 	rec := httptest.NewRecorder()
@@ -357,7 +357,7 @@ func TestConclaveExecHandler_GrantOverridesPolicy(t *testing.T) {
 	})
 	h.SetGrantStore(grantStore)
 
-	body := `{"command":"rm","args":"-rf /tmp/test","raw":"rm -rf /tmp/test","agent_id":"agent-1"}`
+	body := `{"raw":"rm -rf /tmp/test","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	req.Header.Set("X-Agent-ID", "agent-1")
 	rec := httptest.NewRecorder()
@@ -392,7 +392,7 @@ func TestConclaveExecHandler_ExpiredGrantFallsThrough(t *testing.T) {
 	})
 	h.SetGrantStore(grantStore)
 
-	body := `{"command":"rm","args":"-rf /","raw":"rm -rf /","agent_id":"agent-1"}`
+	body := `{"raw":"rm -rf /","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	req.Header.Set("X-Agent-ID", "agent-1")
 	rec := httptest.NewRecorder()

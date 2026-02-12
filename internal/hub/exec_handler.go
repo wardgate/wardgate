@@ -15,22 +15,10 @@ import (
 	"github.com/wardgate/wardgate/internal/policy"
 )
 
-// ExecSegment is a single command in a pipeline for policy evaluation.
-type ExecSegment struct {
-	Command string `json:"command"` // Command name (resolved on conclave, not absolute path)
-	Args    string `json:"args"`
-}
-
 // ConclaveExecRequest is the JSON body for POST /conclaves/{name}/exec.
 type ConclaveExecRequest struct {
-	// For single commands:
-	Command string `json:"command,omitempty"`
-	Args    string `json:"args,omitempty"`
-	// For pipelines (multiple segments evaluated individually):
-	Segments []ExecSegment `json:"segments,omitempty"`
-	// Common fields:
 	Cwd     string `json:"cwd,omitempty"`
-	Raw     string `json:"raw"`     // Full command string to execute on conclave
+	Raw     string `json:"raw"`      // Command string — parsed and validated server-side
 	AgentID string `json:"agent_id"`
 }
 
@@ -129,37 +117,28 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build segments list: either from segments[] or single command/args
-	segments := req.Segments
-	if len(segments) == 0 && req.Command != "" {
-		segments = []ExecSegment{{Command: req.Command, Args: req.Args}}
-	}
-	if len(segments) == 0 {
+	if req.Raw == "" {
 		writeJSON(w, http.StatusBadRequest, ConclaveExecResponse{
 			Action:  "deny",
-			Message: "command or segments required",
+			Message: "raw command required",
 		})
 		return
 	}
 
-	if req.Raw == "" {
-		// Fallback: build raw from single command
-		req.Raw = segments[0].Command
-		if segments[0].Args != "" {
-			req.Raw = segments[0].Command + " " + segments[0].Args
-		}
+	// Parse the raw command server-side (single source of truth for security).
+	// SkipResolve: commands are resolved on the conclave, not the gateway.
+	parsed, err := execpkg.ParseShellCommand(req.Raw, &execpkg.ParseOptions{
+		AllowRedirects: cc.AllowRedirects,
+		SkipResolve:    true,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+			Action:  "deny",
+			Message: err.Error(),
+		})
+		return
 	}
-
-	// Reject redirections unless the conclave opts in
-	if !cc.AllowRedirects {
-		if err := execpkg.CheckRedirections(req.Raw); err != nil {
-			writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
-				Action:  "deny",
-				Message: err.Error(),
-			})
-			return
-		}
-	}
+	segments := parsed.Segments
 
 	agentID := req.AgentID
 	if agentID == "" {
@@ -264,29 +243,27 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Generate request ID
 	reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
 
-	// Send command to conclave for execution.
-	// For single commands, send command+args. For pipelines, reconstruct
-	// the command from policy-checked segments (not req.Raw) to ensure
-	// redirections stripped during parsing can't leak through.
-	execCmd := segments[0].Command
-	execArgs := segments[0].Args
-	if len(segments) > 1 {
-		if cc.AllowRedirects {
-			// When redirects are allowed, use the raw string to preserve them
-			execCmd = req.Raw
-		} else {
-			// Reconstruct from stripped segments — defense-in-depth against
-			// redirections that were stripped during client-side parsing
-			var parts []string
-			for _, seg := range segments {
-				if seg.Args != "" {
-					parts = append(parts, seg.Command+" "+seg.Args)
-				} else {
-					parts = append(parts, seg.Command)
-				}
+	// Build the command to send to the conclave.
+	// When redirects are allowed, use req.Raw to preserve them.
+	// Otherwise, reconstruct from parsed segments (redirections were rejected
+	// during parsing, so this is safe and avoids any raw-vs-segments mismatch).
+	var execCmd, execArgs string
+	if cc.AllowRedirects {
+		execCmd = req.Raw
+		execArgs = ""
+	} else if len(segments) == 1 {
+		execCmd = segments[0].Command
+		execArgs = segments[0].Args
+	} else {
+		var parts []string
+		for _, seg := range segments {
+			if seg.Args != "" {
+				parts = append(parts, seg.Command+" "+seg.Args)
+			} else {
+				parts = append(parts, seg.Command)
 			}
-			execCmd = strings.Join(parts, " | ")
 		}
+		execCmd = strings.Join(parts, " | ")
 		execArgs = ""
 	}
 

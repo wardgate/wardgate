@@ -348,10 +348,14 @@ func runExec(configPath, envPath string, args []string) {
 		}
 	}
 
-	// Parse for unsafe construct detection + segment extraction.
-	// AllowRedirects is true here because the CLI doesn't know the conclave's
-	// policy — redirect enforcement happens server-side.
-	result, err := execpkg.ParseShellCommand(cmdStr, &execpkg.ParseOptions{AllowRedirects: true})
+	// Pre-check for unsafe constructs (UX: fast local feedback).
+	// AllowRedirects and SkipResolve are true because the CLI doesn't know
+	// the conclave's policy and doesn't have the conclave's binaries.
+	// Authoritative parsing + redirect enforcement happens server-side.
+	_, err := execpkg.ParseShellCommand(cmdStr, &execpkg.ParseOptions{
+		AllowRedirects: true,
+		SkipResolve:    true,
+	})
 	if err != nil {
 		if _, ok := err.(*execpkg.UnsafeShellError); ok {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -392,28 +396,13 @@ func runExec(configPath, envPath string, args []string) {
 		os.Exit(1)
 	}
 
-	// Build segments for policy evaluation (command names, not absolute paths)
-	type execSegment struct {
-		Command string `json:"command"`
-		Args    string `json:"args"`
-	}
-	segments := make([]execSegment, len(result.Segments))
-	for i, seg := range result.Segments {
-		segments[i] = execSegment{
-			Command: seg.Command,
-			Args:    seg.Args,
-		}
-	}
-
-	// Send exec request to wardgate — policy eval + execution happen server-side
+	// Send exec request to wardgate — parsing, policy eval + execution happen server-side
 	execReq := struct {
-		Segments []execSegment `json:"segments"`
-		Cwd      string        `json:"cwd,omitempty"`
-		Raw      string        `json:"raw"`
+		Cwd string `json:"cwd,omitempty"`
+		Raw string `json:"raw"`
 	}{
-		Segments: segments,
-		Cwd:      cwd,
-		Raw:      result.Raw,
+		Cwd: cwd,
+		Raw: cmdStr,
 	}
 
 	body, err := json.Marshal(execReq)

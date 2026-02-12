@@ -32,6 +32,7 @@ func (e *UnsafeShellError) Error() string {
 // ParseOptions controls parsing behavior.
 type ParseOptions struct {
 	AllowRedirects bool // If false (default), reject shell redirections (>, >>, <, etc.)
+	SkipResolve    bool // If true, don't resolve command names to absolute paths (useful on gateway)
 }
 
 // ParseShellCommand parses a command string into segments.
@@ -46,8 +47,10 @@ func ParseShellCommand(cmdStr string, opts *ParseOptions) (*ParseResult, error) 
 	}
 
 	allowRedirects := false
+	skipResolve := false
 	if opts != nil {
 		allowRedirects = opts.AllowRedirects
+		skipResolve = opts.SkipResolve
 	}
 
 	// Reject unsafe constructs before parsing
@@ -65,7 +68,7 @@ func ParseShellCommand(cmdStr string, opts *ParseOptions) (*ParseResult, error) 
 			continue
 		}
 
-		seg, err := parseSegment(part)
+		seg, err := parseSegment(part, skipResolve)
 		if err != nil {
 			return nil, err
 		}
@@ -274,8 +277,8 @@ func splitShellSegments(s string) []string {
 }
 
 // parseSegment parses a single command segment, stripping redirections
-// and resolving the command to an absolute path.
-func parseSegment(s string) (ShellSegment, error) {
+// and optionally resolving the command to an absolute path.
+func parseSegment(s string, skipResolve bool) (ShellSegment, error) {
 	s = strings.TrimSpace(s)
 
 	// Tokenize respecting quotes
@@ -310,10 +313,13 @@ func parseSegment(s string) (ShellSegment, error) {
 		args = strings.Join(cmdTokens[1:], " ")
 	}
 
-	// Resolve command to absolute path
-	resolved, err := resolveCommand(command)
-	if err != nil {
-		return ShellSegment{}, fmt.Errorf("cannot resolve command %q: %w", command, err)
+	var resolved string
+	if !skipResolve {
+		var err error
+		resolved, err = resolveCommand(command)
+		if err != nil {
+			return ShellSegment{}, fmt.Errorf("cannot resolve command %q: %w", command, err)
+		}
 	}
 
 	return ShellSegment{
