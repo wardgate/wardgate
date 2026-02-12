@@ -18,13 +18,13 @@ import (
 // ConclaveExecRequest is the JSON body for POST /conclaves/{name}/exec.
 type ConclaveExecRequest struct {
 	Cwd     string `json:"cwd,omitempty"`
-	Raw     string `json:"raw"`      // Command string — parsed and validated server-side
+	Raw     string `json:"raw"` // Command string - parsed and validated server-side
 	AgentID string `json:"agent_id"`
 }
 
 // ConclaveExecResponse is the JSON response for conclave exec requests.
 type ConclaveExecResponse struct {
-	Action   string `json:"action"`             // "allow", "deny", "ask", "error"
+	Action   string `json:"action"` // "allow", "deny", "ask", "error"
 	Message  string `json:"message,omitempty"`
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
@@ -35,7 +35,7 @@ type ConclaveExecResponse struct {
 type ExecHandler struct {
 	hub         *Hub
 	engines     map[string]*policy.Engine        // conclave name -> policy engine
-	configs     map[string]config.ConclaveConfig  // conclave name -> config
+	configs     map[string]config.ConclaveConfig // conclave name -> config
 	approvalMgr *approval.Manager
 	grantStore  *grants.Store
 }
@@ -68,7 +68,7 @@ func (h *ExecHandler) SetApprovalManager(mgr *approval.Manager) {
 func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/")
 
-	// GET / — list conclaves
+	// GET / - list conclaves
 	if (path == "" || path == "/") && r.Method == http.MethodGet {
 		h.handleList(w, r)
 		return

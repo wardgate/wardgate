@@ -296,8 +296,8 @@ func TestSplitShellSegments(t *testing.T) {
 		{"echo a ; echo b", 2},
 		{"echo a | echo b | echo c", 3},
 		{"echo a && echo b || echo c", 3},
-		{"echo 'a | b'", 1},   // pipe inside quotes
-		{`echo "a && b"`, 1},  // chain inside quotes
+		{"echo 'a | b'", 1},  // pipe inside quotes
+		{`echo "a && b"`, 1}, // chain inside quotes
 	}
 
 	for _, tt := range tests {

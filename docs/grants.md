@@ -2,8 +2,8 @@
 
 Grants are runtime-added policy rules that override static rules in `config.yaml`. They can be **permanent** or **time-limited**, and they solve two common needs:
 
-1. **"Allow this command for the next 10 minutes"** — time-limited grant
-2. **"Always allow this command"** — permanent grant
+1. **"Allow this command for the next 10 minutes"** - time-limited grant
+2. **"Always allow this command"** - permanent grant
 
 ## How It Works
 
@@ -23,10 +23,10 @@ Grants are stored in `grants.json` (separate from `config.yaml` to avoid modifyi
 
 When approving a pending request in the Web UI, you can choose:
 
-- **Approve** — one-time approval (existing behavior)
-- **+10m** — approve and allow the same pattern for 10 minutes
-- **+1h** — approve and allow for 1 hour
-- **Always** — approve and permanently allow
+- **Approve** - one-time approval (existing behavior)
+- **+10m** - approve and allow the same pattern for 10 minutes
+- **+1h** - approve and allow for 1 hour
+- **Always** - approve and permanently allow
 
 ### Via CLI
 
@@ -104,7 +104,7 @@ server:
 
 - Grants persist in `grants.json` using atomic writes (write to temp file, rename)
 - Expired grants are automatically pruned on load and periodically
-- The file is machine-managed — don't edit it by hand (use CLI or API instead)
+- The file is machine-managed - don't edit it by hand (use CLI or API instead)
 
 ## Examples
 

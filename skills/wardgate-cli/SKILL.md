@@ -10,15 +10,15 @@ allowed-tools: Bash(wardgate-cli:*)
 
 # wardgate-cli
 
-A restricted HTTP client and remote execution tool. It replaces `curl` for API calls and provides `exec` for running commands on isolated remote environments (conclaves) — all routed through a Wardgate security proxy.
+A restricted HTTP client and remote execution tool. It replaces `curl` for API calls and provides `exec` for running commands on isolated remote environments (conclaves) - all routed through a Wardgate security proxy.
 
 ## Key constraints
 
-- **Fixed server** — the Wardgate server URL is compiled into the binary; you cannot change it.
-- **No arbitrary URLs** — only paths on the configured Wardgate server are allowed.
-- **Auth is automatic** — the agent key comes from config; do not pass `Authorization` headers.
+- **Fixed server** - the Wardgate server URL is compiled into the binary; you cannot change it.
+- **No arbitrary URLs** - only paths on the configured Wardgate server are allowed.
+- **Auth is automatic** - the agent key comes from config; do not pass `Authorization` headers.
 
-## Discovery — always start here
+## Discovery - always start here
 
 Before making requests, discover what's available:
 
@@ -65,9 +65,9 @@ wardgate-cli -s -w '%{http_code}' /todoist/tasks
 |------|-------------|
 | `-X METHOD` | HTTP method (default: GET) |
 | `-H "Key: Value"` | Add header |
-| `-d 'body'` | Request body (sets method to POST if -X not given by convention, but wardgate-cli defaults to GET — always pass `-X POST` explicitly) |
+| `-d 'body'` | Request body (sets method to POST if -X not given by convention, but wardgate-cli defaults to GET - always pass `-X POST` explicitly) |
 | `-o file` | Write response body to file |
-| `-s` | Silent — suppress status line on stderr |
+| `-s` | Silent - suppress status line on stderr |
 | `-v` | Verbose output |
 | `-L` | Follow redirects (same-host only) |
 | `-w format` | Write-out format (`%{http_code}`, `%{http_status}`) |
@@ -103,11 +103,11 @@ wardgate-cli exec -C /data/archive obsidian "ls -la"
 
 ### What's rejected
 
-Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), subshells (`(...)`), and shell redirections (`>`, `>>`, `<`, etc.) are **always rejected** — they allow hidden command execution or uncontrolled file writes that can't be policy-checked.
+Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), subshells (`(...)`), and shell redirections (`>`, `>>`, `<`, etc.) are **always rejected** - they allow hidden command execution or uncontrolled file writes that can't be policy-checked.
 
 ### Policy actions
 
-Commands may be `allow`ed, `deny`ed, or require human approval (`ask`). If a command is denied, the error message will tell you why. Do not retry denied commands with tricks to bypass policy — this will also be denied.
+Commands may be `allow`ed, `deny`ed, or require human approval (`ask`). If a command is denied, the error message will tell you why. Do not retry denied commands with tricks to bypass policy - this will also be denied.
 
 ## Troubleshooting
 
@@ -123,7 +123,7 @@ Commands may be `allow`ed, `deny`ed, or require human approval (`ask`). If a com
 ## Important rules
 
 1. **Always run `wardgate-cli endpoints` or `wardgate-cli conclaves` first** to discover what's available before guessing paths.
-2. **Never fabricate endpoint paths** — use only what discovery returns.
-3. **Do not pass Authorization/Bearer headers** — auth is handled automatically.
-4. **Do not use curl** — use `wardgate-cli` for all HTTP requests to external services.
-5. **Respect denials** — if a command or request is denied by policy, do not attempt workarounds.
+2. **Never fabricate endpoint paths** - use only what discovery returns.
+3. **Do not pass Authorization/Bearer headers** - auth is handled automatically.
+4. **Do not use curl** - use `wardgate-cli` for all HTTP requests to external services.
+5. **Respect denials** - if a command or request is denied by policy, do not attempt workarounds.

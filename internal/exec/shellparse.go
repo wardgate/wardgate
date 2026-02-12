@@ -37,7 +37,7 @@ type ParseOptions struct {
 
 // ParseShellCommand parses a command string into segments.
 // It splits on pipes (|), chains (&&, ||, ;) and evaluates each segment.
-// It rejects command substitution ($(), ``), process substitution (<(), >()),
+// It rejects command substitution ($(), “), process substitution (<(), >()),
 // and subshells ((...)).
 // If opts is nil, defaults are used (redirections rejected).
 func ParseShellCommand(cmdStr string, opts *ParseOptions) (*ParseResult, error) {

@@ -154,7 +154,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer close(done)
 	go h.heartbeat(cc, done)
 
-	// Read loop — messages from conclave are forwarded to pending requests
+	// Read loop - messages from conclave are forwarded to pending requests
 	h.readLoop(cc)
 }
 

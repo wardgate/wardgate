@@ -4,14 +4,14 @@ A **conclave** is an isolated execution environment with specific data and tools
 
 ## Why
 
-AI agents don't just call APIs — they execute shell commands. Running commands directly on the agent host is dangerous: prompt injection can lead to `rm -rf /`, data exfiltration via `curl`, or worse. Even with local exec gating, the agent host has access to everything on its filesystem.
+AI agents don't just call APIs - they execute shell commands. Running commands directly on the agent host is dangerous: prompt injection can lead to `rm -rf /`, data exfiltration via `curl`, or worse. Even with local exec gating, the agent host has access to everything on its filesystem.
 
 Conclaves solve this by moving execution to isolated environments:
 
-- **Data isolation** — Each conclave has access to only its own data (e.g., a notes vault, a code repo)
-- **Tool isolation** — Each conclave has only the binaries it needs (e.g., `rg`, `git`, `cat`)
-- **Network isolation** — Conclaves connect outbound to Wardgate only; no inbound ports
-- **Policy enforcement** — Wardgate evaluates every command against per-conclave rules before forwarding
+- **Data isolation** - Each conclave has access to only its own data (e.g., a notes vault, a code repo)
+- **Tool isolation** - Each conclave has only the binaries it needs (e.g., `rg`, `git`, `cat`)
+- **Network isolation** - Conclaves connect outbound to Wardgate only; no inbound ports
+- **Policy enforcement** - Wardgate evaluates every command against per-conclave rules before forwarding
 
 ## Architecture
 
@@ -44,7 +44,7 @@ sequenceDiagram
 
 1. `wardgate-exec` starts in the conclave and connects **outbound** to Wardgate via WebSocket
 2. Wardgate authenticates the connection using a pre-shared key
-3. The connection stays open — Wardgate can send commands at any time
+3. The connection stays open - Wardgate can send commands at any time
 4. When an agent runs `wardgate-cli exec <conclave> "<command>"`:
    - `wardgate-cli` parses the command and sends segments + raw command to Wardgate
    - Wardgate evaluates each segment against the conclave's policy rules
@@ -123,7 +123,7 @@ max_input_bytes: 1048576    # 1MB (default)
 max_output_bytes: 10485760  # 10MB (default)
 ```
 
-The local `allowed_bins` acts as a second layer — even if Wardgate allows a command, `wardgate-exec` will reject it if it's not in the local allowlist.
+The local `allowed_bins` acts as a second layer - even if Wardgate allows a command, `wardgate-exec` will reject it if it's not in the local allowlist.
 
 ## Policy Rules
 
@@ -255,9 +255,9 @@ Key deployment principles:
 
 - **Mount data read-only** when the conclave only needs to read (`:ro`)
 - **Mount config read-only** so `wardgate-exec` config cannot be tampered with
-- **Run as non-root** — the `Dockerfile.conclave` creates a dedicated `conclave` user
-- **No inbound ports** — `wardgate-exec` connects outbound to Wardgate
-- **Local allowlist** — use `allowed_bins` in `wardgate-exec` config for defense in depth
+- **Run as non-root** - the `Dockerfile.conclave` creates a dedicated `conclave` user
+- **No inbound ports** - `wardgate-exec` connects outbound to Wardgate
+- **Local allowlist** - use `allowed_bins` in `wardgate-exec` config for defense in depth
 
 ## Security Model
 
@@ -273,7 +273,7 @@ The agent never sees conclave data directly. It can only interact through comman
 
 ## Limitations
 
-- **No interactive commands** — conclaves execute commands and return output; no TTY support
-- **Output size limits** — large outputs are truncated to prevent memory exhaustion
-- **Single command at a time** — concurrent commands to the same conclave are serialized
-- **No file transfer** — agents cannot upload or download files directly; use commands like `cat` and `tee`
+- **No interactive commands** - conclaves execute commands and return output; no TTY support
+- **Output size limits** - large outputs are truncated to prevent memory exhaustion
+- **Single command at a time** - concurrent commands to the same conclave are serialized
+- **No file transfer** - agents cannot upload or download files directly; use commands like `cat` and `tee`

@@ -37,7 +37,7 @@ var (
 )
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `wardgate %s — Security gateway for AI agents
+	fmt.Fprintf(os.Stderr, `wardgate %s - Security gateway for AI agents
 
 Usage:
   wardgate [flags]                    Start the gateway server

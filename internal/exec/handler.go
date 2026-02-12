@@ -12,11 +12,11 @@ import (
 
 // EvaluateRequest is the JSON body for POST /exec/evaluate.
 type EvaluateRequest struct {
-	Command string   `json:"command"`          // Resolved absolute path of the executable
-	Args    string   `json:"args"`             // Joined argument string
-	Cwd     string   `json:"cwd"`              // Absolute working directory
-	AgentID string   `json:"agent_id"`         // Agent identifier
-	Raw     string   `json:"raw,omitempty"`    // Original command string (for display)
+	Command string `json:"command"`       // Resolved absolute path of the executable
+	Args    string `json:"args"`          // Joined argument string
+	Cwd     string `json:"cwd"`           // Absolute working directory
+	AgentID string `json:"agent_id"`      // Agent identifier
+	Raw     string `json:"raw,omitempty"` // Original command string (for display)
 }
 
 // EvaluateResponse is the JSON response for POST /exec/evaluate.
@@ -190,7 +190,7 @@ func (h *Handler) handleReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":         true,
+		"ok":          true,
 		"received_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

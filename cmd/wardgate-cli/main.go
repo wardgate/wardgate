@@ -80,13 +80,13 @@ func main() {
 	runRequest(configPath, *envPath, runRequestOpts{
 		method:          m,
 		headers:         headers,
-		data:           data,
-		output:         *output,
-		silent:         *silent,
-		verbose:        *verbose,
+		data:            data,
+		output:          *output,
+		silent:          *silent,
+		verbose:         *verbose,
 		followRedirects: *followRedirects,
-		insecure:       *insecure,
-		writeOut:       *writeOut,
+		insecure:        *insecure,
+		writeOut:        *writeOut,
 	})
 }
 
@@ -203,13 +203,13 @@ func runConclaves(configPath, envPath string) {
 type runRequestOpts struct {
 	method          string
 	headers         headerSlice
-	data           string
-	output         string
-	silent         bool
-	verbose        bool
+	data            string
+	output          string
+	silent          bool
+	verbose         bool
 	followRedirects bool
-	insecure       bool
-	writeOut       string
+	insecure        bool
+	writeOut        string
 }
 
 func runRequest(configPath, envPath string, opts runRequestOpts) {
@@ -254,7 +254,7 @@ func runRequest(configPath, envPath string, opts runRequestOpts) {
 	client, err := cli.NewClient(cfg.Server, key, cli.ClientOptions{
 		FollowRedirects:    opts.followRedirects,
 		InsecureSkipVerify: opts.insecure,
-		RootCAs:           rootCAs,
+		RootCAs:            rootCAs,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -337,7 +337,7 @@ func runExec(configPath, envPath string, args []string) {
 	conclaveName := execFlags.Arg(0)
 	cmdStr := execFlags.Arg(1)
 
-	// Determine cwd (optional — conclave has its own default)
+	// Determine cwd (optional - conclave has its own default)
 	cwd := *cwdFlag
 	if cwd != "" {
 		var err error
@@ -396,7 +396,7 @@ func runExec(configPath, envPath string, args []string) {
 		os.Exit(1)
 	}
 
-	// Send exec request to wardgate — parsing, policy eval + execution happen server-side
+	// Send exec request to wardgate - parsing, policy eval + execution happen server-side
 	execReq := struct {
 		Cwd string `json:"cwd,omitempty"`
 		Raw string `json:"raw"`

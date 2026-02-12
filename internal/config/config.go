@@ -181,8 +181,8 @@ type Config struct {
 	Server         ServerConfig               `yaml:"server"`
 	Agents         []AgentConfig              `yaml:"agents"`
 	Endpoints      map[string]Endpoint        `yaml:"endpoints"`
-	Conclaves      map[string]ConclaveConfig  `yaml:"conclaves,omitempty"`      // Remote execution conclaves
-	Tools          *ToolsConfig               `yaml:"tools,omitempty"`          // Top-level tool call gating
+	Conclaves      map[string]ConclaveConfig  `yaml:"conclaves,omitempty"` // Remote execution conclaves
+	Tools          *ToolsConfig               `yaml:"tools,omitempty"`     // Top-level tool call gating
 	Notify         NotifyConfig               `yaml:"notify,omitempty"`
 	PresetsDir     string                     `yaml:"presets_dir,omitempty"`     // Directory containing custom preset YAML files
 	CustomPresets  map[string]CustomPresetDef `yaml:"custom_presets,omitempty"`  // Inline custom preset definitions
@@ -210,10 +210,10 @@ type CapabilityDef struct {
 // ServerConfig holds server settings.
 type ServerConfig struct {
 	Listen      string        `yaml:"listen"`
-	BaseURL     string        `yaml:"base_url,omitempty"`       // Base URL for links in notifications
-	AdminKeyEnv string        `yaml:"admin_key_env,omitempty"`  // Env var for admin key (for web UI/CLI)
-	GrantsFile  string        `yaml:"grants_file,omitempty"`    // Path to grants file (default: grants.json)
-	Logging     LoggingConfig `yaml:"logging,omitempty"`        // Logging dashboard configuration
+	BaseURL     string        `yaml:"base_url,omitempty"`      // Base URL for links in notifications
+	AdminKeyEnv string        `yaml:"admin_key_env,omitempty"` // Env var for admin key (for web UI/CLI)
+	GrantsFile  string        `yaml:"grants_file,omitempty"`   // Path to grants file (default: grants.json)
+	Logging     LoggingConfig `yaml:"logging,omitempty"`       // Logging dashboard configuration
 }
 
 // LoggingConfig holds logging dashboard settings.
@@ -253,7 +253,7 @@ type Endpoint struct {
 	Agents       []string          `yaml:"agents,omitempty"`      // Restrict to specific agents (empty = all)
 	Adapter      string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
 	Upstream     string            `yaml:"upstream,omitempty"`
-	DocsURL      string            `yaml:"docs_url,omitempty"`    // Link to API documentation (optional, overrides preset)
+	DocsURL      string            `yaml:"docs_url,omitempty"` // Link to API documentation (optional, overrides preset)
 	Auth         AuthConfig        `yaml:"auth"`
 	Capabilities map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")
 	Rules        []Rule            `yaml:"rules,omitempty"`
@@ -319,7 +319,7 @@ type Match struct {
 	Path   string `yaml:"path,omitempty"`
 
 	// Exec-specific match fields (for adapter: exec)
-	Command    string `yaml:"command,omitempty"`     // Glob match on executable path (e.g., "/usr/bin/python*")
+	Command     string `yaml:"command,omitempty"`      // Glob match on executable path (e.g., "/usr/bin/python*")
 	ArgsPattern string `yaml:"args_pattern,omitempty"` // Regex match on joined argument string
 	CwdPattern  string `yaml:"cwd_pattern,omitempty"`  // Glob match on working directory
 }

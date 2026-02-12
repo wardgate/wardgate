@@ -160,7 +160,7 @@ func TestConclaveExecHandler_EmptyCommand(t *testing.T) {
 func TestConclaveExecHandler_PipelineDenyOneSegment(t *testing.T) {
 	h := newTestExecHandler(t)
 
-	// Pipeline: rg (allowed) | rm (denied) — gateway parses the raw command
+	// Pipeline: rg (allowed) | rm (denied) - gateway parses the raw command
 	body := `{"raw":"rg TODO | rm -rf /","agent_id":"agent-1"}`
 	req := httptest.NewRequest(http.MethodPost, "/obsidian/exec", strings.NewReader(body))
 	rec := httptest.NewRecorder()

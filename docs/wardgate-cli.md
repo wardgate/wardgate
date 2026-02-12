@@ -173,9 +173,9 @@ wardgate-cli exec -C /data/vault obsidian "rg 'meeting notes' ."
 
 - Commands are parsed and each segment is evaluated against per-conclave policy rules
 - The agent cannot invoke `/bin/sh` directly (denied by policy)
-- `wardgate-cli` controls all parsing — the agent only provides a command string
+- `wardgate-cli` controls all parsing - the agent only provides a command string
 - Execution happens on the conclave, not the agent host
-- Conclaves connect outbound to wardgate — no inbound ports required
+- Conclaves connect outbound to wardgate - no inbound ports required
 
 See [Conclaves](conclaves.md) for full documentation including policy configuration.
 

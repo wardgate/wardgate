@@ -161,7 +161,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecRequest, onOutput func(O
 					mu.Lock()
 					limitExceeded = true
 					mu.Unlock()
-					// Kill the process — we're over the limit
+					// Kill the process - we're over the limit
 					cmd.Process.Kill()
 					return
 				}
