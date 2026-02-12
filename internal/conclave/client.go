@@ -2,6 +2,7 @@ package conclave
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"math/rand"
@@ -50,6 +51,7 @@ type ClientMessage struct {
 // and processes command execution requests.
 type Client struct {
 	cfg      *Config
+	dialer   *websocket.Dialer
 	executor *Executor
 
 	// Track running commands for kill support
@@ -59,8 +61,19 @@ type Client struct {
 
 // NewClient creates a new wardgate-exec client.
 func NewClient(cfg *Config, executor *Executor) *Client {
+	dialer := *websocket.DefaultDialer
+
+	rootCAs, err := cfg.LoadRootCAs()
+	if err != nil {
+		log.Fatalf("Failed to load CA file: %v", err)
+	}
+	if rootCAs != nil {
+		dialer.TLSClientConfig = &tls.Config{RootCAs: rootCAs}
+	}
+
 	return &Client{
 		cfg:      cfg,
+		dialer:   &dialer,
 		executor: executor,
 		cancels:  make(map[string]context.CancelFunc),
 	}
@@ -109,7 +122,7 @@ func (c *Client) connect(ctx context.Context) error {
 
 	log.Printf("Connecting to %s as %q...", c.cfg.Server, c.cfg.Name)
 
-	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, c.cfg.Server, header)
+	conn, resp, err := c.dialer.DialContext(ctx, c.cfg.Server, header)
 	if err != nil {
 		if resp != nil {
 			return fmt.Errorf("dial: %s (HTTP %d)", err, resp.StatusCode)
