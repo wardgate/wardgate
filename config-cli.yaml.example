@@ -1,0 +1,13 @@
+# wardgate-cli configuration
+# Default path: /etc/wardgate-cli/config.yaml
+# (path is fixed at build time; the agent cannot override it)
+
+# Wardgate server URL
+server: http://localhost:8080
+
+# Agent key (use one of these, not both)
+key: "your-agent-key"
+# key_env: WARDGATE_AGENT_KEY  # Read key from env var instead
+
+# Custom CA certificate (optional, for self-signed / internal CAs)
+# ca_file: /etc/wardgate-cli/ca.pem

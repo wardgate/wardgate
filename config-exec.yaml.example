@@ -1,0 +1,28 @@
+# wardgate-exec configuration
+# Default path: /etc/wardgate-exec/config.yaml
+
+# Wardgate server WebSocket URL
+server: wss://wardgate.example.com/conclaves/ws
+
+# Pre-shared key for authenticating with Wardgate
+key: "your-conclave-key"
+
+# Conclave name (must match the conclave name in Wardgate's config.yaml)
+name: obsidian
+
+# Local binary allowlist (optional, defense in depth)
+# Even if Wardgate allows a command, wardgate-exec rejects it if not listed here.
+# allowed_bins:
+#   - cat
+#   - rg
+#   - head
+#   - ls
+#   - tee
+#   - cp
+
+# Custom CA certificate (optional, for self-signed / internal CAs)
+# ca_file: /etc/wardgate-exec/ca.pem
+
+# Output limits (optional)
+# max_input_bytes: 1048576    # 1MB (default)
+# max_output_bytes: 10485760  # 10MB (default)
