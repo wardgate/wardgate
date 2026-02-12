@@ -109,6 +109,43 @@ Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), su
 
 Commands may be `allow`ed, `deny`ed, or require human approval (`ask`). If a command is denied, the error message will tell you why. Do not retry denied commands with tricks to bypass policy - this will also be denied.
 
+## Running custom command templates
+
+Conclaves can define pre-made command templates that agents invoke by name. Templates have shell-escaped argument substitution built in, so you only pass the values.
+
+```bash
+wardgate-cli run <conclave> <command> [args...]
+wardgate-cli run -C /path <conclave> <command> [args...]
+```
+
+### Discovery
+
+The `conclaves` output includes available commands and their arguments for each conclave. Always check before guessing command names.
+
+### Examples
+
+```bash
+# Search notes by filename pattern
+wardgate-cli run obsidian search "*.md"
+
+# Search note contents
+wardgate-cli run obsidian grep "TODO"
+
+# Command with no arguments
+wardgate-cli run obsidian status
+
+# With working directory
+wardgate-cli run -C /data/archive obsidian search "*.txt"
+```
+
+### How it works
+
+1. The server looks up the named command template for that conclave.
+2. Your positional args are shell-escaped and substituted into `{placeholder}` positions in the template.
+3. The expanded command is executed on the conclave (same policy actions as `exec` - `allow`, `deny`, or `ask`).
+
+If the number of arguments doesn't match what the template expects, you'll get an error.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
