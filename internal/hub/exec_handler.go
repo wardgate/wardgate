@@ -79,13 +79,18 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// POST /{name}/exec
+	// POST /{name}/exec or POST /{name}/run
 	parts := strings.SplitN(path, "/", 2)
-	if len(parts) != 2 || parts[1] != "exec" {
+	if len(parts) != 2 || (parts[1] != "exec" && parts[1] != "run") {
 		http.NotFound(w, r)
 		return
 	}
 	conclaveName := parts[0]
+
+	if parts[1] == "run" {
+		h.handleRun(w, r, conclaveName)
+		return
+	}
 
 	// Validate conclave exists
 	cc, ok := h.configs[conclaveName]
@@ -286,7 +291,7 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		select {
 		case raw, ok := <-ch:
 			if !ok {
-				// Channel closed — conclave disconnected
+				// Channel closed - conclave disconnected
 				writeJSON(w, http.StatusServiceUnavailable, ConclaveExecResponse{
 					Action:  "error",
 					Message: fmt.Sprintf("conclave %q disconnected during execution", conclaveName),
@@ -342,11 +347,228 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ConclaveRunRequest is the JSON body for POST /conclaves/{name}/run.
+type ConclaveRunRequest struct {
+	Command string   `json:"command"`        // Command name from config
+	Args    []string `json:"args,omitempty"` // Positional arg values
+	Cwd     string   `json:"cwd,omitempty"`
+	AgentID string   `json:"agent_id"`
+}
+
+// handleRun executes a pre-defined command template on a conclave.
+func (h *ExecHandler) handleRun(w http.ResponseWriter, r *http.Request, conclaveName string) {
+	// Validate conclave exists
+	cc, ok := h.configs[conclaveName]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, ConclaveExecResponse{
+			Action:  "error",
+			Message: fmt.Sprintf("conclave %q not found", conclaveName),
+		})
+		return
+	}
+
+	// Check agent scope
+	agentID := r.Header.Get("X-Agent-ID")
+	if !auth.AgentAllowed(cc.Agents, agentID) {
+		writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+			Action:  "deny",
+			Message: fmt.Sprintf("agent %q is not allowed to access conclave %q", agentID, conclaveName),
+		})
+		return
+	}
+
+	// Parse request
+	var req ConclaveRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ConclaveExecResponse{
+			Action:  "deny",
+			Message: "invalid request body",
+		})
+		return
+	}
+
+	if req.Command == "" {
+		writeJSON(w, http.StatusBadRequest, ConclaveExecResponse{
+			Action:  "deny",
+			Message: "command name required",
+		})
+		return
+	}
+
+	// Look up command definition
+	cmdDef, ok := cc.Commands[req.Command]
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, ConclaveExecResponse{
+			Action:  "deny",
+			Message: fmt.Sprintf("unknown command %q", req.Command),
+		})
+		return
+	}
+
+	// Expand template with provided args
+	expanded, err := execpkg.ExpandTemplate(cmdDef.Template, cmdDef.Args, req.Args)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ConclaveExecResponse{
+			Action:  "deny",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	if req.AgentID != "" {
+		agentID = req.AgentID
+	}
+
+	// Use conclave's default cwd if not specified
+	cwd := req.Cwd
+	if cwd == "" {
+		cwd = cc.Cwd
+	}
+
+	// Check action: ask requires approval
+	action := cmdDef.Action
+	if action == "" {
+		action = "allow"
+	}
+
+	if action == "ask" {
+		if h.approvalMgr == nil {
+			writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+				Action:  "deny",
+				Message: "approval required but no approval manager configured",
+			})
+			return
+		}
+
+		approved, err := h.approvalMgr.RequestApprovalWithContent(r.Context(), approval.ApprovalRequest{
+			Endpoint:    "conclave:" + conclaveName,
+			Method:      "RUN",
+			Path:        req.Command,
+			AgentID:     agentID,
+			ContentType: "exec",
+			Summary:     fmt.Sprintf("Agent %s wants to run %s on %s: %s", agentID, req.Command, conclaveName, expanded),
+			Body:        expanded,
+			Headers: map[string]string{
+				"Command":  req.Command,
+				"Expanded": expanded,
+				"Cwd":      cwd,
+				"Conclave": conclaveName,
+			},
+		})
+		if err != nil {
+			writeJSON(w, http.StatusGatewayTimeout, ConclaveExecResponse{
+				Action:  "deny",
+				Message: fmt.Sprintf("approval timeout: %v", err),
+			})
+			return
+		}
+		if !approved {
+			writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+				Action:  "deny",
+				Message: "execution denied by approver",
+			})
+			return
+		}
+	}
+
+	// Check conclave is connected
+	if !h.hub.IsConnected(conclaveName) {
+		writeJSON(w, http.StatusServiceUnavailable, ConclaveExecResponse{
+			Action:  "error",
+			Message: fmt.Sprintf("conclave %q is not connected", conclaveName),
+		})
+		return
+	}
+
+	// Send expanded command to conclave
+	reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
+	ch, err := h.hub.SendExec(conclaveName, reqID, expanded, "", cwd)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, ConclaveExecResponse{
+			Action:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+	defer h.hub.CleanupExec(conclaveName, reqID)
+
+	// Collect output (same as exec handler)
+	var stdout, stderr strings.Builder
+	var exitCode int
+	timeout := time.After(5 * time.Minute)
+
+	for {
+		select {
+		case raw, ok := <-ch:
+			if !ok {
+				writeJSON(w, http.StatusServiceUnavailable, ConclaveExecResponse{
+					Action:  "error",
+					Message: fmt.Sprintf("conclave %q disconnected during execution", conclaveName),
+				})
+				return
+			}
+
+			var msg struct {
+				Type       string `json:"type"`
+				Data       string `json:"data,omitempty"`
+				Code       int    `json:"code,omitempty"`
+				DurationMs int64  `json:"duration_ms,omitempty"`
+				Message    string `json:"message,omitempty"`
+			}
+			if err := json.Unmarshal(raw, &msg); err != nil {
+				continue
+			}
+
+			switch msg.Type {
+			case MsgStdout:
+				stdout.WriteString(msg.Data)
+			case MsgStderr:
+				stderr.WriteString(msg.Data)
+			case MsgExit:
+				exitCode = msg.Code
+				writeJSON(w, http.StatusOK, ConclaveExecResponse{
+					Action:   "allow",
+					Stdout:   stdout.String(),
+					Stderr:   stderr.String(),
+					ExitCode: &exitCode,
+				})
+				return
+			case MsgError:
+				writeJSON(w, http.StatusInternalServerError, ConclaveExecResponse{
+					Action:  "error",
+					Message: msg.Message,
+				})
+				return
+			}
+
+		case <-timeout:
+			h.hub.SendKill(conclaveName, reqID)
+			writeJSON(w, http.StatusGatewayTimeout, ConclaveExecResponse{
+				Action:  "error",
+				Message: "execution timed out",
+			})
+			return
+
+		case <-r.Context().Done():
+			h.hub.SendKill(conclaveName, reqID)
+			return
+		}
+	}
+}
+
+// CommandInfo describes a defined command for discovery.
+type CommandInfo struct {
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Args        []config.CommandArg `json:"args,omitempty"`
+}
+
 // ConclaveListItem is a single conclave in the list response.
 type ConclaveListItem struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Status      string `json:"status"` // "connected" or "disconnected"
+	Name        string        `json:"name"`
+	Description string        `json:"description,omitempty"`
+	Status      string        `json:"status"` // "connected" or "disconnected"
+	Commands    []CommandInfo `json:"commands,omitempty"`
 }
 
 // handleList returns the list of configured conclaves with status.
@@ -361,10 +583,19 @@ func (h *ExecHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		if h.hub.IsConnected(name) {
 			status = "connected"
 		}
+		var cmds []CommandInfo
+		for cmdName, cmdDef := range cc.Commands {
+			cmds = append(cmds, CommandInfo{
+				Name:        cmdName,
+				Description: cmdDef.Description,
+				Args:        cmdDef.Args,
+			})
+		}
 		items = append(items, ConclaveListItem{
 			Name:        name,
 			Description: cc.Description,
 			Status:      status,
+			Commands:    cmds,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{

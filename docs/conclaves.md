@@ -159,6 +159,66 @@ Commands sent by the agent are resolved to absolute paths on the conclave before
 - match: { command: "git", cwd_pattern: "/home/dev/**" }   # git only in dev home
 ```
 
+## Command Templates
+
+Instead of allowing full shell access, you can define **command templates** - pre-made commands where the agent only provides arguments. This is the recommended approach when you want to expose specific operations without granting broad tool access.
+
+### Configuration
+
+```yaml
+conclaves:
+  obsidian:
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    commands:
+      search:
+        description: "Search notes by filename"
+        template: "find . -iname {query}"
+        args:
+          - name: query
+            description: "Filename pattern"
+      grep:
+        description: "Search note contents (secrets filtered)"
+        template: "rg {pattern} | grep -v SECRET1 | grep -v SECRET2"
+        args:
+          - name: pattern
+            description: "Text pattern"
+        action: ask  # require approval
+      status:
+        description: "Show vault file listing"
+        template: "ls -la"
+```
+
+### How It Works
+
+1. The agent calls `wardgate-cli run obsidian search "*.md"`
+2. Wardgate looks up the `search` command definition
+3. The `{query}` placeholder is replaced with `'*.md'` (shell-escaped)
+4. The expanded command `find . -iname '*.md'` is sent to the conclave
+
+Defining a command IS the policy - no rules evaluation is needed. The agent can only run the exact command shapes you defined, with their arguments safely shell-escaped.
+
+### Template Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | No | Human-readable description (shown in discovery) |
+| `template` | string | Yes | Command string with `{argname}` placeholders |
+| `args` | array | No | Ordered list of named arguments |
+| `action` | string | No | `allow` (default) or `ask` (require approval) |
+
+### Argument Escaping
+
+All argument values are automatically wrapped in single quotes before substitution, preventing shell injection. For example, an agent passing `; rm -rf /` as an argument produces `'; rm -rf /'` which is treated as a literal string by the shell.
+
+### Discovery
+
+When an agent calls `wardgate-cli conclaves`, the response includes available commands with their descriptions and argument specs, so the agent knows what's available without needing documentation.
+
+### Commands vs Rules
+
+You can use `commands` and `rules` together on the same conclave. Commands provide a safe, restricted interface for common operations, while rules gate raw `exec` access for cases where the agent needs more flexibility.
+
 ## Pipeline Support
 
 Agents commonly emit piped commands. `wardgate-cli` parses these and each segment is evaluated individually:

@@ -164,16 +164,32 @@ type ToolsConfig struct {
 	Rules []Rule `yaml:"rules"`
 }
 
+// CommandArg defines a named argument for a command template.
+type CommandArg struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description,omitempty"`
+}
+
+// CommandDef defines a pre-made command template for a conclave.
+// Agents invoke it by name, supplying only the argument values.
+type CommandDef struct {
+	Description string       `yaml:"description,omitempty"`
+	Template    string       `yaml:"template"`
+	Args        []CommandArg `yaml:"args,omitempty"`
+	Action      string       `yaml:"action,omitempty"` // allow (default), ask
+}
+
 // ConclaveConfig defines a remote execution conclave.
 type ConclaveConfig struct {
-	Description    string   `yaml:"description,omitempty"`
-	KeyEnv         string   `yaml:"key_env"`
-	Agents         []string `yaml:"agents,omitempty"`
-	Cwd            string   `yaml:"cwd,omitempty"`
-	MaxInputBytes  int64    `yaml:"max_input_bytes,omitempty"`
-	MaxOutputBytes int64    `yaml:"max_output_bytes,omitempty"`
-	AllowRedirects bool     `yaml:"allow_redirects,omitempty"`
-	Rules          []Rule   `yaml:"rules,omitempty"`
+	Description    string                `yaml:"description,omitempty"`
+	KeyEnv         string                `yaml:"key_env"`
+	Agents         []string              `yaml:"agents,omitempty"`
+	Cwd            string                `yaml:"cwd,omitempty"`
+	MaxInputBytes  int64                 `yaml:"max_input_bytes,omitempty"`
+	MaxOutputBytes int64                 `yaml:"max_output_bytes,omitempty"`
+	AllowRedirects bool                  `yaml:"allow_redirects,omitempty"`
+	Rules          []Rule                `yaml:"rules,omitempty"`
+	Commands       map[string]CommandDef `yaml:"commands,omitempty"`
 }
 
 // Config is the root configuration structure.
@@ -516,6 +532,12 @@ func (c *Config) GetEndpointDescription(name string, ep Endpoint) string {
 }
 
 func (c *Config) validate() error {
+	// Valid actions for command templates (allow and ask only; deny makes no sense for a defined command)
+	validCommandActions := map[string]bool{
+		"allow": true,
+		"ask":   true,
+	}
+
 	// Validate conclaves
 	for name, cc := range c.Conclaves {
 		if cc.KeyEnv == "" {
@@ -527,6 +549,20 @@ func (c *Config) validate() error {
 			}
 			if !validActions[rule.Action] {
 				return fmt.Errorf("conclave %q rule %d: invalid action %q", name, i, rule.Action)
+			}
+		}
+		for cmdName, cmd := range cc.Commands {
+			if cmd.Template == "" {
+				return fmt.Errorf("conclave %q command %q: empty template", name, cmdName)
+			}
+			if cmd.Action != "" && !validCommandActions[cmd.Action] {
+				return fmt.Errorf("conclave %q command %q: invalid action %q (must be allow or ask)", name, cmdName, cmd.Action)
+			}
+			for _, arg := range cmd.Args {
+				placeholder := "{" + arg.Name + "}"
+				if !strings.Contains(cmd.Template, placeholder) {
+					return fmt.Errorf("conclave %q command %q: placeholder {%s} not found in template", name, cmdName, arg.Name)
+				}
 			}
 		}
 	}

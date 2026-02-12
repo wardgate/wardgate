@@ -84,27 +84,51 @@ presets_dir: ./presets
 #   - A wardgate-exec instance running on the conclave host
 
 # conclaves:
+#   # --- Command templates (recommended for most use cases) ---
+#   # Define pre-made commands that agents invoke by name.
+#   # The agent only provides arguments; the command shape is fixed.
+#   # Use: wardgate-cli run <conclave> <command> [args...]
+#
 #   obsidian:
 #     description: "Obsidian vault (personal notes)"
 #     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
 #     agents: [agent-name]  # Optional: restrict to specific agents (omit for all)
 #     cwd: /data/vault
+#     commands:
+#       search:
+#         description: "Search notes by filename"
+#         template: "find . -iname {query}"
+#         args:
+#           - name: query
+#             description: "Filename pattern (e.g. *.md)"
+#       grep:
+#         description: "Search note contents (secrets filtered)"
+#         template: "rg {pattern} | grep -v SECRET1 | grep -v SECRET2"
+#         args:
+#           - name: pattern
+#             description: "Text pattern to search for"
+#       read:
+#         description: "Read a note"
+#         template: "cat {file}"
+#         args:
+#           - name: file
+#             description: "Path to note file"
+#       write:
+#         description: "Append to daily notes"
+#         template: "add_to_daily_notes.sh {text}"
+#         args:
+#           - name: text
+#             description: "Text to append"
+#         action: ask  # Require approval for writes
+#     # Optional: also allow raw exec with policy rules
 #     # allow_redirects: false  # Default: false. Set true to allow >, >>, <, etc.
-#     rules:
-#       - match: { command: "cat" }
-#         action: allow
-#       - match: { command: "rg" }
-#         action: allow
-#       - match: { command: "head" }
-#         action: allow
-#       - match: { command: "tail" }
-#         action: allow
-#       - match: { command: "add_to_daily_notes.sh" }
-#         action: allow
-#       - match: { command: "tee" }
-#         action: ask
-#       - match: { command: "*" }
-#         action: deny
+#     # rules:
+#     #   - match: { command: "cat" }
+#     #     action: allow
+#     #   - match: { command: "*" }
+#     #     action: deny
+#
+#   # --- Raw exec with policy rules (for more flexibility) ---
 #
 #   code:
 #     description: "Development environment"

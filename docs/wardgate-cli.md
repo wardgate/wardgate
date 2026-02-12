@@ -107,6 +107,14 @@ wardgate-cli exec code "rg TODO src/ | head -20"
 wardgate-cli exec -C /home/agent/project code "make build"
 ```
 
+**Run a defined command on a conclave:**
+
+```bash
+wardgate-cli run obsidian search "*.md"
+wardgate-cli run obsidian grep "TODO"
+wardgate-cli run -C /data/archive obsidian search "*.txt"
+```
+
 **List conclaves:**
 
 ```bash
@@ -178,6 +186,39 @@ wardgate-cli exec -C /data/vault obsidian "rg 'meeting notes' ."
 - Conclaves connect outbound to wardgate - no inbound ports required
 
 See [Conclaves](conclaves.md) for full documentation including policy configuration.
+
+## Conclave Run
+
+The `run` subcommand executes a pre-defined command template on a conclave. Unlike `exec`, the agent doesn't construct a shell command - it just provides the command name and arguments.
+
+### Usage
+
+```bash
+wardgate-cli run [-C <dir>] <conclave> <command> [args...]
+```
+
+### How It Works
+
+1. `wardgate-cli` sends the command name and positional arguments to wardgate
+2. Wardgate looks up the command template in the conclave's config
+3. Arguments are shell-escaped and substituted into the template
+4. The expanded command is executed on the conclave
+
+### Examples
+
+```bash
+wardgate-cli run obsidian search "*.md"       # find . -iname '*.md'
+wardgate-cli run obsidian grep "TODO"          # rg 'TODO' | grep -v SECRET1 | grep -v SECRET2
+wardgate-cli run obsidian status               # ls -la (no args needed)
+```
+
+### Security
+
+- The agent cannot inject shell metacharacters - all arguments are single-quote escaped
+- The command shape is fixed by the config; only placeholder values change
+- No shell parsing needed - the template defines the exact command structure
+
+See [Conclaves](conclaves.md) for command template configuration.
 
 ## Agent Integration
 

@@ -417,3 +417,265 @@ func TestConclaveExecHandler_MethodNotAllowed(t *testing.T) {
 		t.Errorf("expected 405, got %d", rec.Code)
 	}
 }
+
+// --- /run endpoint tests (command templates) ---
+
+func newTestExecHandlerWithCommands(t *testing.T) *ExecHandler {
+	t.Helper()
+
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"obsidian": {Name: "obsidian", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"obsidian": {
+			Description: "Test vault",
+			KeyEnv:      "TEST_CONCLAVE_KEY",
+			Cwd:         "/data/vault",
+			Commands: map[string]config.CommandDef{
+				"search": {
+					Description: "Search notes by filename",
+					Template:    "find . -iname {query}",
+					Args:        []config.CommandArg{{Name: "query", Description: "Filename pattern"}},
+				},
+				"grep": {
+					Description: "Search note contents",
+					Template:    "rg {pattern} | grep -v SECRET1 | grep -v SECRET2",
+					Args:        []config.CommandArg{{Name: "pattern", Description: "Text pattern"}},
+					Action:      "ask",
+				},
+				"status": {
+					Description: "Show vault status",
+					Template:    "ls -la",
+				},
+			},
+			Rules: []config.Rule{
+				{Match: config.Match{Command: "*"}, Action: "deny"},
+			},
+		},
+	}
+
+	return NewExecHandler(hub, conclaves)
+}
+
+func TestConclaveRunHandler_AllowNotConnected(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"search","args":["*.md"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	// Command is defined and allowed, but conclave is offline
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+
+	var resp ConclaveExecResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if !strings.Contains(resp.Message, "not connected") {
+		t.Errorf("expected 'not connected' message, got %q", resp.Message)
+	}
+}
+
+func TestConclaveRunHandler_NoArgsCommand(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"status"}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	// No args needed, allowed, but conclave is offline
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_UnknownCommand(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"nonexistent","args":["foo"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+
+	var resp ConclaveExecResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if !strings.Contains(resp.Message, "nonexistent") {
+		t.Errorf("expected error mentioning command name, got %q", resp.Message)
+	}
+}
+
+func TestConclaveRunHandler_WrongArgCount(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"search","args":["*.md","extra"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_AskWithoutManager(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"grep","args":["TODO"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_UnknownConclave(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"command":"search","args":["*.md"]}`
+	req := httptest.NewRequest(http.MethodPost, "/unknown/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_AgentNotAllowed(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"obsidian": {Name: "obsidian", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"obsidian": {
+			KeyEnv: "TEST_CONCLAVE_KEY",
+			Agents: []string{"tessa"},
+			Commands: map[string]config.CommandDef{
+				"search": {Template: "find . -iname {q}", Args: []config.CommandArg{{Name: "q"}}},
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	body := `{"command":"search","args":["*.md"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "bob")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_InvalidBody(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader("not json"))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestConclaveRunHandler_MissingCommandField(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	body := `{"args":["*.md"]}`
+	req := httptest.NewRequest(http.MethodPost, "/obsidian/run", strings.NewReader(body))
+	req.Header.Set("X-Agent-ID", "agent-1")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestConclaveListHandler_IncludesCommands(t *testing.T) {
+	h := newTestExecHandlerWithCommands(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Conclaves []struct {
+			Name     string `json:"name"`
+			Commands []struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				Args        []struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"args"`
+			} `json:"commands"`
+		} `json:"conclaves"`
+	}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if len(resp.Conclaves) != 1 {
+		t.Fatalf("expected 1 conclave, got %d", len(resp.Conclaves))
+	}
+
+	commands := resp.Conclaves[0].Commands
+	if len(commands) != 3 {
+		t.Fatalf("expected 3 commands, got %d", len(commands))
+	}
+
+	// Find the search command
+	found := false
+	for _, cmd := range commands {
+		if cmd.Name == "search" {
+			found = true
+			if cmd.Description != "Search notes by filename" {
+				t.Errorf("unexpected description: %s", cmd.Description)
+			}
+			if len(cmd.Args) != 1 || cmd.Args[0].Name != "query" {
+				t.Errorf("unexpected args: %v", cmd.Args)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected to find 'search' command in list")
+	}
+}

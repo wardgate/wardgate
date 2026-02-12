@@ -690,7 +690,44 @@ conclaves:
 | `key_env` | string | Yes | Environment variable holding the conclave's pre-shared key |
 | `agents` | array | No | Agent IDs allowed to access this conclave (empty = all agents) |
 | `cwd` | string | No | Default working directory for commands |
+| `commands` | map | No | Named command templates (see below) |
 | `rules` | array | No | Policy rules using exec match fields |
+
+### Command Templates
+
+Define pre-made commands that agents invoke by name, supplying only arguments:
+
+```yaml
+conclaves:
+  obsidian:
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    commands:
+      search:
+        description: "Search notes by filename"
+        template: "find . -iname {query}"
+        args:
+          - name: query
+            description: "Filename pattern"
+      grep:
+        description: "Search note contents"
+        template: "rg {pattern} | grep -v SECRET1 | grep -v SECRET2"
+        args:
+          - name: pattern
+            description: "Text pattern"
+        action: ask
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | No | Human-readable description |
+| `template` | string | Yes | Command with `{argname}` placeholders |
+| `args` | array | No | Ordered argument definitions |
+| `args[].name` | string | Yes | Argument name (matches placeholder in template) |
+| `args[].description` | string | No | Human-readable description |
+| `action` | string | No | `allow` (default) or `ask` |
+
+Agents run commands via `wardgate-cli run <conclave> <command> [args...]`. Arguments are shell-escaped before substitution. See [Conclaves](conclaves.md) for details.
 
 When `agents` is omitted or empty, all authenticated agents can execute commands on the conclave. When specified, other agents receive `403 Forbidden` and the conclave is hidden from their `GET /conclaves` discovery response.
 

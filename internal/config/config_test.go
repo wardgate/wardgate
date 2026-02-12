@@ -1084,3 +1084,124 @@ endpoints:
 		t.Errorf("expected 'Paul's Tasks', got %s", desc)
 	}
 }
+
+// Conclave command template tests
+
+func TestLoadConfig_ConclaveCommands(t *testing.T) {
+	os.Setenv("TEST_CC_KEY", "test")
+	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })
+
+	yaml := `
+conclaves:
+  obsidian:
+    key_env: TEST_CC_KEY
+    commands:
+      search:
+        description: "Search notes by filename"
+        template: "find . -iname {query}"
+        args:
+          - name: query
+            description: "Filename pattern"
+      grep:
+        description: "Search note contents"
+        template: "rg {pattern} | grep -v SECRET1 | grep -v SECRET2"
+        args:
+          - name: pattern
+            description: "Text pattern"
+        action: ask
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cc := cfg.Conclaves["obsidian"]
+	if len(cc.Commands) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(cc.Commands))
+	}
+
+	search := cc.Commands["search"]
+	if search.Template != "find . -iname {query}" {
+		t.Errorf("unexpected template: %s", search.Template)
+	}
+	if len(search.Args) != 1 || search.Args[0].Name != "query" {
+		t.Errorf("unexpected args: %v", search.Args)
+	}
+	if search.Action != "" {
+		t.Errorf("expected empty action (defaults to allow), got %s", search.Action)
+	}
+
+	grep := cc.Commands["grep"]
+	if grep.Action != "ask" {
+		t.Errorf("expected action 'ask', got %s", grep.Action)
+	}
+}
+
+func TestLoadConfig_ConclaveCommandEmptyTemplate(t *testing.T) {
+	os.Setenv("TEST_CC_KEY", "test")
+	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })
+
+	yaml := `
+conclaves:
+  test:
+    key_env: TEST_CC_KEY
+    commands:
+      bad:
+        description: "Missing template"
+        template: ""
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for empty template")
+	}
+	if !strings.Contains(err.Error(), "template") {
+		t.Errorf("error should mention 'template': %v", err)
+	}
+}
+
+func TestLoadConfig_ConclaveCommandInvalidAction(t *testing.T) {
+	os.Setenv("TEST_CC_KEY", "test")
+	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })
+
+	yaml := `
+conclaves:
+  test:
+    key_env: TEST_CC_KEY
+    commands:
+      bad:
+        template: "echo {x}"
+        args:
+          - name: x
+        action: invalid
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid command action")
+	}
+	if !strings.Contains(err.Error(), "action") {
+		t.Errorf("error should mention 'action': %v", err)
+	}
+}
+
+func TestLoadConfig_ConclaveCommandMissingPlaceholder(t *testing.T) {
+	os.Setenv("TEST_CC_KEY", "test")
+	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })
+
+	yaml := `
+conclaves:
+  test:
+    key_env: TEST_CC_KEY
+    commands:
+      bad:
+        template: "echo hello"
+        args:
+          - name: missing
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for missing placeholder")
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Errorf("error should mention missing placeholder: %v", err)
+	}
+}
