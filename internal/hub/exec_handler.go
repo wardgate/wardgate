@@ -480,9 +480,14 @@ func (h *ExecHandler) handleRun(w http.ResponseWriter, r *http.Request, conclave
 		return
 	}
 
+	// Split expanded command into binary name + args so the conclave
+	// can resolve the binary via PATH and run the rest under sh -c
+	// (which also handles pipes, &&, etc. in templates).
+	execCmd, execArgs := splitFirstToken(expanded)
+
 	// Send expanded command to conclave
 	reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
-	ch, err := h.hub.SendExec(conclaveName, reqID, expanded, "", cwd)
+	ch, err := h.hub.SendExec(conclaveName, reqID, execCmd, execArgs, cwd)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, ConclaveExecResponse{
 			Action:  "error",
@@ -601,6 +606,19 @@ func (h *ExecHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"conclaves": items,
 	})
+}
+
+// splitFirstToken splits a shell command string into the first token
+// (binary name) and the remainder. This allows the conclave to resolve
+// just the binary via PATH while passing the rest through sh -c.
+func splitFirstToken(s string) (command, args string) {
+	s = strings.TrimSpace(s)
+	parts := strings.SplitN(s, " ", 2)
+	command = parts[0]
+	if len(parts) > 1 {
+		args = parts[1]
+	}
+	return
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
