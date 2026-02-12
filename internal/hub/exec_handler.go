@@ -10,6 +10,7 @@ import (
 	"github.com/wardgate/wardgate/internal/approval"
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
+	execpkg "github.com/wardgate/wardgate/internal/exec"
 	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
 )
@@ -149,6 +150,17 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Reject redirections unless the conclave opts in
+	if !cc.AllowRedirects {
+		if err := execpkg.CheckRedirections(req.Raw); err != nil {
+			writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+				Action:  "deny",
+				Message: err.Error(),
+			})
+			return
+		}
+	}
+
 	agentID := req.AgentID
 	if agentID == "" {
 		agentID = r.Header.Get("X-Agent-ID")
@@ -252,13 +264,29 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Generate request ID
 	reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
 
-	// Send full raw command to conclave for execution.
-	// For single commands, send command+args. For pipelines, send the raw string
-	// as the command with empty args (conclave executes via sh -c).
+	// Send command to conclave for execution.
+	// For single commands, send command+args. For pipelines, reconstruct
+	// the command from policy-checked segments (not req.Raw) to ensure
+	// redirections stripped during parsing can't leak through.
 	execCmd := segments[0].Command
 	execArgs := segments[0].Args
 	if len(segments) > 1 {
-		execCmd = req.Raw
+		if cc.AllowRedirects {
+			// When redirects are allowed, use the raw string to preserve them
+			execCmd = req.Raw
+		} else {
+			// Reconstruct from stripped segments — defense-in-depth against
+			// redirections that were stripped during client-side parsing
+			var parts []string
+			for _, seg := range segments {
+				if seg.Args != "" {
+					parts = append(parts, seg.Command+" "+seg.Args)
+				} else {
+					parts = append(parts, seg.Command)
+				}
+			}
+			execCmd = strings.Join(parts, " | ")
+		}
 		execArgs = ""
 	}
 

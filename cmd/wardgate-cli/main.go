@@ -348,8 +348,10 @@ func runExec(configPath, envPath string, args []string) {
 		}
 	}
 
-	// Parse for unsafe construct detection + segment extraction
-	result, err := execpkg.ParseShellCommand(cmdStr)
+	// Parse for unsafe construct detection + segment extraction.
+	// AllowRedirects is true here because the CLI doesn't know the conclave's
+	// policy — redirect enforcement happens server-side.
+	result, err := execpkg.ParseShellCommand(cmdStr, &execpkg.ParseOptions{AllowRedirects: true})
 	if err != nil {
 		if _, ok := err.(*execpkg.UnsafeShellError); ok {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

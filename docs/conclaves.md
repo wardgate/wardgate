@@ -177,14 +177,13 @@ This is parsed into two segments (`rg` and `head`), each checked against the con
 | AND chains | `cmd1 && cmd2` | Each segment evaluated individually |
 | OR chains | `cmd1 \|\| cmd2` | Each segment evaluated individually |
 | Semicolons | `cmd1 ; cmd2` | Each segment evaluated individually |
-| Redirections | `cmd > file` | Allowed (command is evaluated, redirect target is not) |
-
 ### Rejected Constructs
 
-These are rejected because they introduce hidden command execution that cannot be policy-checked:
+These are rejected because they introduce hidden command execution or file modification that cannot be policy-checked:
 
 | Construct | Example | Why rejected |
 |-----------|---------|--------------|
+| Redirections | `cmd > file` | Uncontrolled file writes (set `allow_redirects: true` to enable) |
 | Command substitution | `echo $(cat /etc/passwd)` | Hidden command execution |
 | Backticks | `` echo `cat /etc/passwd` `` | Hidden command execution |
 | Process substitution | `diff <(cmd1) <(cmd2)` | Hidden command execution |

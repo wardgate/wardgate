@@ -89,6 +89,7 @@ presets_dir: ./presets
 #     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
 #     agents: [agent-name]  # Optional: restrict to specific agents (omit for all)
 #     cwd: /data/vault
+#     # allow_redirects: false  # Default: false. Set true to allow >, >>, <, etc.
 #     rules:
 #       - match: { command: "cat" }
 #         action: allow

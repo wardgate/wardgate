@@ -172,6 +172,7 @@ type ConclaveConfig struct {
 	Cwd            string   `yaml:"cwd,omitempty"`
 	MaxInputBytes  int64    `yaml:"max_input_bytes,omitempty"`
 	MaxOutputBytes int64    `yaml:"max_output_bytes,omitempty"`
+	AllowRedirects bool     `yaml:"allow_redirects,omitempty"`
 	Rules          []Rule   `yaml:"rules,omitempty"`
 }
 

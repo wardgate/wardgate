@@ -103,7 +103,7 @@ wardgate-cli exec -C /data/archive obsidian "ls -la"
 
 ### What's rejected
 
-Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), and subshells (`(...)`) are **always rejected** — they allow hidden command execution that can't be policy-checked.
+Command substitution (`$()`), backticks, process substitution (`<()`, `>()`), subshells (`(...)`), and shell redirections (`>`, `>>`, `<`, etc.) are **always rejected** — they allow hidden command execution or uncontrolled file writes that can't be policy-checked.
 
 ### Policy actions
 
@@ -118,6 +118,7 @@ Commands may be `allow`ed, `deny`ed, or require human approval (`ask`). If a com
 | Non-2xx response | Upstream API error or policy denial | Read the response body for details |
 | "Command not in allowlist" | Conclave policy denied the command | Use only allowed commands; run `wardgate-cli conclaves` to check |
 | "not supported" on exec | Used `$()`, backticks, or subshells | Rewrite without shell substitution |
+| "redirections are not allowed" | Used `>`, `>>`, `<`, etc. | Use `tee` to write files instead of redirections |
 
 ## Important rules
 

@@ -29,18 +29,29 @@ func (e *UnsafeShellError) Error() string {
 	return fmt.Sprintf("unsafe shell construct: %s", e.Reason)
 }
 
+// ParseOptions controls parsing behavior.
+type ParseOptions struct {
+	AllowRedirects bool // If false (default), reject shell redirections (>, >>, <, etc.)
+}
+
 // ParseShellCommand parses a command string into segments.
 // It splits on pipes (|), chains (&&, ||, ;) and evaluates each segment.
 // It rejects command substitution ($(), ``), process substitution (<(), >()),
 // and subshells ((...)).
-func ParseShellCommand(cmdStr string) (*ParseResult, error) {
+// If opts is nil, defaults are used (redirections rejected).
+func ParseShellCommand(cmdStr string, opts *ParseOptions) (*ParseResult, error) {
 	cmdStr = strings.TrimSpace(cmdStr)
 	if cmdStr == "" {
 		return nil, fmt.Errorf("empty command")
 	}
 
+	allowRedirects := false
+	if opts != nil {
+		allowRedirects = opts.AllowRedirects
+	}
+
 	// Reject unsafe constructs before parsing
-	if err := checkUnsafeConstructs(cmdStr); err != nil {
+	if err := checkUnsafeConstructs(cmdStr, allowRedirects); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +83,8 @@ func ParseShellCommand(cmdStr string) (*ParseResult, error) {
 }
 
 // checkUnsafeConstructs rejects shell constructs that introduce hidden command execution.
-func checkUnsafeConstructs(s string) error {
+// If allowRedirects is false, shell redirections (>, >>, <, 2>, &>, etc.) are also rejected.
+func checkUnsafeConstructs(s string, allowRedirects bool) error {
 	// Walk through the string respecting quoting
 	inSingle := false
 	inDouble := false
@@ -118,6 +130,79 @@ func checkUnsafeConstructs(s string) error {
 				continue // Already caught above
 			}
 			return &UnsafeShellError{Reason: "subshells are not allowed"}
+		}
+
+		// Check for redirections (when not allowed)
+		if !allowRedirects && !inDouble {
+			if err := checkRedirection(s, i, ch); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// checkRedirection checks if the character at position i is the start of a
+// shell redirection operator. Returns an UnsafeShellError if so.
+func checkRedirection(s string, i int, ch byte) *UnsafeShellError {
+	switch ch {
+	case '>':
+		// Already handled >() as process substitution above; that check runs first.
+		// This catches: >, >>, &>, &>>
+		return &UnsafeShellError{Reason: "shell redirections are not allowed (use allow_redirects: true to enable)"}
+	case '<':
+		// Already handled <() as process substitution above.
+		// This catches: <, <<
+		return &UnsafeShellError{Reason: "shell redirections are not allowed (use allow_redirects: true to enable)"}
+	}
+
+	// Check for numeric redirects like 2>, 2>>
+	if ch >= '0' && ch <= '9' && i+1 < len(s) && s[i+1] == '>' {
+		// Make sure this is a fd redirect, not just a digit in an argument.
+		// Only treat as redirect if preceded by whitespace or start of string.
+		if i == 0 || s[i-1] == ' ' || s[i-1] == '\t' {
+			return &UnsafeShellError{Reason: "shell redirections are not allowed (use allow_redirects: true to enable)"}
+		}
+	}
+
+	// Check for &> and &>>
+	if ch == '&' && i+1 < len(s) && s[i+1] == '>' {
+		return &UnsafeShellError{Reason: "shell redirections are not allowed (use allow_redirects: true to enable)"}
+	}
+
+	return nil
+}
+
+// CheckRedirections checks if a command string contains shell redirections.
+// Returns an UnsafeShellError if redirections are found.
+// This is useful for server-side validation when allow_redirects is false.
+func CheckRedirections(s string) error {
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+		if inSingle || inDouble {
+			continue
+		}
+
+		// Skip process substitution markers (handled separately)
+		if (ch == '<' || ch == '>') && i+1 < len(s) && s[i+1] == '(' {
+			continue
+		}
+
+		if err := checkRedirection(s, i, ch); err != nil {
+			return err
 		}
 	}
 

@@ -5,8 +5,11 @@ import (
 	"testing"
 )
 
+// allowRedirects is a convenience for tests that need redirections permitted.
+var allowRedirects = &ParseOptions{AllowRedirects: true}
+
 func TestParseShellCommand_SimpleCommand(t *testing.T) {
-	result, err := ParseShellCommand("echo hello world")
+	result, err := ParseShellCommand("echo hello world", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -25,7 +28,7 @@ func TestParseShellCommand_SimpleCommand(t *testing.T) {
 }
 
 func TestParseShellCommand_Pipeline(t *testing.T) {
-	result, err := ParseShellCommand("echo foo | head -20")
+	result, err := ParseShellCommand("echo foo | head -20", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,7 +47,7 @@ func TestParseShellCommand_Pipeline(t *testing.T) {
 }
 
 func TestParseShellCommand_Chain(t *testing.T) {
-	result, err := ParseShellCommand("echo one && echo two")
+	result, err := ParseShellCommand("echo one && echo two", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +63,7 @@ func TestParseShellCommand_Chain(t *testing.T) {
 }
 
 func TestParseShellCommand_OrChain(t *testing.T) {
-	result, err := ParseShellCommand("true || echo fallback")
+	result, err := ParseShellCommand("true || echo fallback", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,7 +79,7 @@ func TestParseShellCommand_OrChain(t *testing.T) {
 }
 
 func TestParseShellCommand_Semicolon(t *testing.T) {
-	result, err := ParseShellCommand("echo one ; echo two")
+	result, err := ParseShellCommand("echo one ; echo two", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,8 +88,33 @@ func TestParseShellCommand_Semicolon(t *testing.T) {
 	}
 }
 
-func TestParseShellCommand_Redirections(t *testing.T) {
-	result, err := ParseShellCommand("echo hello > out.txt")
+func TestParseShellCommand_RejectRedirections(t *testing.T) {
+	// Redirections are rejected by default (nil options)
+	cases := []string{
+		"echo hello > out.txt",
+		"echo hello >> out.txt",
+		"cat < input.txt",
+		"cmd 2> err.log",
+		"cmd 2>> err.log",
+		"cmd &> all.log",
+		"cmd &>> all.log",
+	}
+	for _, c := range cases {
+		_, err := ParseShellCommand(c, nil)
+		if err == nil {
+			t.Errorf("expected error for %q, got nil", c)
+			continue
+		}
+		var unsafeErr *UnsafeShellError
+		if !errors.As(err, &unsafeErr) {
+			t.Errorf("expected UnsafeShellError for %q, got %T: %v", c, err, err)
+		}
+	}
+}
+
+func TestParseShellCommand_AllowRedirections(t *testing.T) {
+	// Redirections are allowed when opted in
+	result, err := ParseShellCommand("echo hello > out.txt", allowRedirects)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,8 +129,49 @@ func TestParseShellCommand_Redirections(t *testing.T) {
 	}
 }
 
+func TestParseShellCommand_RedirectionsInQuotesOK(t *testing.T) {
+	// Redirections inside single quotes are literal, not operators
+	result, err := ParseShellCommand("echo '> not a redirect'", nil)
+	if err != nil {
+		t.Fatalf("single-quoted > should be safe, got error: %v", err)
+	}
+	if len(result.Segments) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(result.Segments))
+	}
+}
+
+func TestParseShellCommand_PipelineWithRedirectRejected(t *testing.T) {
+	// Pipeline containing a redirect should be rejected by default
+	_, err := ParseShellCommand("echo secret > /tmp/exfil.txt | true", nil)
+	if err == nil {
+		t.Fatal("expected error for pipeline with redirect")
+	}
+	var unsafeErr *UnsafeShellError
+	if !errors.As(err, &unsafeErr) {
+		t.Errorf("expected UnsafeShellError, got %T: %v", err, err)
+	}
+}
+
+func TestCheckRedirections(t *testing.T) {
+	// Should detect redirections
+	if err := CheckRedirections("echo hello > out.txt"); err == nil {
+		t.Error("expected error for >")
+	}
+	if err := CheckRedirections("cat < in.txt"); err == nil {
+		t.Error("expected error for <")
+	}
+	// Should pass without redirections
+	if err := CheckRedirections("echo hello world"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	// Quoted redirections should be fine
+	if err := CheckRedirections("echo '> not a redirect'"); err != nil {
+		t.Errorf("quoted > should be safe: %v", err)
+	}
+}
+
 func TestParseShellCommand_RejectCommandSubstitution(t *testing.T) {
-	_, err := ParseShellCommand("echo $(cat /etc/passwd)")
+	_, err := ParseShellCommand("echo $(cat /etc/passwd)", nil)
 	if err == nil {
 		t.Fatal("expected error for command substitution")
 	}
@@ -113,7 +182,7 @@ func TestParseShellCommand_RejectCommandSubstitution(t *testing.T) {
 }
 
 func TestParseShellCommand_RejectBackticks(t *testing.T) {
-	_, err := ParseShellCommand("echo `cat /etc/passwd`")
+	_, err := ParseShellCommand("echo `cat /etc/passwd`", nil)
 	if err == nil {
 		t.Fatal("expected error for backtick substitution")
 	}
@@ -124,7 +193,7 @@ func TestParseShellCommand_RejectBackticks(t *testing.T) {
 }
 
 func TestParseShellCommand_RejectProcessSubstitution(t *testing.T) {
-	_, err := ParseShellCommand("diff <(echo a) <(echo b)")
+	_, err := ParseShellCommand("diff <(echo a) <(echo b)", nil)
 	if err == nil {
 		t.Fatal("expected error for process substitution")
 	}
@@ -135,7 +204,7 @@ func TestParseShellCommand_RejectProcessSubstitution(t *testing.T) {
 }
 
 func TestParseShellCommand_RejectSubshells(t *testing.T) {
-	_, err := ParseShellCommand("(cd /tmp && rm -rf *)")
+	_, err := ParseShellCommand("(cd /tmp && rm -rf *)", nil)
 	if err == nil {
 		t.Fatal("expected error for subshell")
 	}
@@ -147,7 +216,7 @@ func TestParseShellCommand_RejectSubshells(t *testing.T) {
 
 func TestParseShellCommand_QuotedSafe(t *testing.T) {
 	// Single-quoted $() should be treated as literal, not rejected
-	result, err := ParseShellCommand("echo '$(not a substitution)'")
+	result, err := ParseShellCommand("echo '$(not a substitution)'", nil)
 	if err != nil {
 		t.Fatalf("single-quoted $() should be safe, got error: %v", err)
 	}
@@ -160,12 +229,12 @@ func TestParseShellCommand_QuotedSafe(t *testing.T) {
 }
 
 func TestParseShellCommand_Empty(t *testing.T) {
-	_, err := ParseShellCommand("")
+	_, err := ParseShellCommand("", nil)
 	if err == nil {
 		t.Fatal("expected error for empty command")
 	}
 
-	_, err = ParseShellCommand("   ")
+	_, err = ParseShellCommand("   ", nil)
 	if err == nil {
 		t.Fatal("expected error for whitespace-only command")
 	}
