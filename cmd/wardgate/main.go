@@ -100,6 +100,8 @@ func main() {
 		os.Exit(0)
 	}
 
+	log.Printf("Wardgate %s (commit: %s, built: %s)", version, commit, date)
+
 	// Load environment variables
 	if err := godotenv.Load(*envPath); err != nil {
 		log.Printf("Warning: could not load %s: %v", *envPath, err)
