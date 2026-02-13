@@ -198,8 +198,8 @@ func (h *AdminHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 			// Grant creation failed, but approval succeeded -- log and continue
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
-				"status":        "approved",
-				"grant_error":   err.Error(),
+				"status":      "approved",
+				"grant_error": err.Error(),
 			})
 			return
 		}

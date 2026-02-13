@@ -42,9 +42,9 @@ type ClientMessage struct {
 	Type       string `json:"type"`
 	ID         string `json:"id,omitempty"`
 	Data       string `json:"data,omitempty"`        // stdout, stderr
-	Code       int    `json:"code,omitempty"`         // exit
-	DurationMs int64  `json:"duration_ms,omitempty"`  // exit
-	Message    string `json:"message,omitempty"`       // error
+	Code       int    `json:"code,omitempty"`        // exit
+	DurationMs int64  `json:"duration_ms,omitempty"` // exit
+	Message    string `json:"message,omitempty"`     // error
 }
 
 // Client is the wardgate-exec WebSocket client that connects to wardgate
@@ -55,8 +55,8 @@ type Client struct {
 	executor *Executor
 
 	// Track running commands for kill support
-	mu       sync.Mutex
-	cancels  map[string]context.CancelFunc
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc
 }
 
 // NewClient creates a new wardgate-exec client.

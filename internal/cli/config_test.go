@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-
 func TestLoad_NoEnvOverride(t *testing.T) {
 	// Env vars must NOT override config - agent could set WARDGATE_URL to redirect elsewhere
 	dir := t.TempDir()
@@ -117,4 +116,3 @@ func TestLoadRootCAs_Valid(t *testing.T) {
 		t.Error("expected non-nil pool")
 	}
 }
-

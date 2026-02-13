@@ -84,7 +84,7 @@ func TestHandler_FiltersByAgent(t *testing.T) {
 	endpoints := []EndpointInfo{
 		{Name: "todoist", Description: "Todoist", Agents: []string{"tessa"}},
 		{Name: "github", Description: "GitHub", Agents: []string{"bob"}},
-		{Name: "shared", Description: "Shared API"},  // no agents restriction
+		{Name: "shared", Description: "Shared API"}, // no agents restriction
 	}
 	h := NewHandler(endpoints)
 

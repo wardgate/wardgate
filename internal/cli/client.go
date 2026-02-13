@@ -11,8 +11,8 @@ import (
 
 // ClientOptions configures the HTTP client.
 type ClientOptions struct {
-	FollowRedirects    bool         // -L: follow same-host redirects only
-	InsecureSkipVerify bool         // -k: skip TLS verification
+	FollowRedirects    bool           // -L: follow same-host redirects only
+	InsecureSkipVerify bool           // -k: skip TLS verification
 	RootCAs            *x509.CertPool // Custom CA pool (e.g. from ca_file config)
 }
 

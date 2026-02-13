@@ -12,9 +12,9 @@ import (
 type EndpointInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
-	Upstream    string   `json:"upstream,omitempty"`    // Base URL of the upstream API (for version info)
-	DocsURL     string   `json:"docs_url"`              // Link to API documentation (empty if none)
-	Agents      []string `json:"-"`                     // Restrict visibility to specific agents (not serialized)
+	Upstream    string   `json:"upstream,omitempty"` // Base URL of the upstream API (for version info)
+	DocsURL     string   `json:"docs_url"`           // Link to API documentation (empty if none)
+	Agents      []string `json:"-"`                  // Restrict visibility to specific agents (not serialized)
 }
 
 // EndpointsResponse is the response for GET /endpoints.

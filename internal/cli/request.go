@@ -10,12 +10,12 @@ import (
 
 // RequestOptions holds options for building an HTTP request.
 type RequestOptions struct {
-	Method  string
-	Headers []string // "Key: Value" format
-	Data    string
-	Output  string // -o file path
-	Silent  bool
-	Verbose bool
+	Method   string
+	Headers  []string // "Key: Value" format
+	Data     string
+	Output   string // -o file path
+	Silent   bool
+	Verbose  bool
 	WriteOut string // -w format string
 }
 

@@ -11,9 +11,9 @@ import (
 
 // Config holds wardgate-cli configuration.
 type Config struct {
-	Server  string `yaml:"server"`
-	Key     string `yaml:"key"`
-	KeyEnv  string `yaml:"key_env"`
+	Server string `yaml:"server"`
+	Key    string `yaml:"key"`
+	KeyEnv string `yaml:"key_env"`
 	CAFile string `yaml:"ca_file"` // Path to custom CA cert (PEM) for internal Wardgate with custom CA
 }
 
