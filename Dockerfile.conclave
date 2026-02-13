@@ -23,13 +23,16 @@ FROM alpine:3.21
 
 # Install tools available in this conclave.
 # Customize this list for your use case.
-RUN apk add --no-cache ca-certificates ripgrep coreutils
+RUN apk add --no-cache ca-certificates ripgrep coreutils python3
 
 # Create non-root user
 RUN adduser -D -u 1000 conclave
 
 # Copy binary
 COPY --from=builder /app/wardgate-exec /usr/local/bin/wardgate-exec
+
+# Copy standard file tools
+COPY scripts/file_*.py /usr/local/lib/wardgate-tools/
 
 # Data volume
 VOLUME /data

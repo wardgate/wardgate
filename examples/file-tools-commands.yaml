@@ -1,0 +1,114 @@
+# Standard file tools for wardgate conclaves.
+#
+# These command templates wrap the Python scripts in scripts/file_*.py.
+# Copy the commands you need into your conclave config, adjusting the
+# script path and action (allow/ask) as needed.
+#
+# Scripts should be installed at /usr/local/lib/wardgate-tools/ in the
+# conclave container (see Dockerfile.conclave).
+#
+# This is a reference file - not loaded automatically by wardgate.
+
+# commands:
+  read:
+    description: "Read file contents (numbered lines)"
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+    args:
+      - name: file
+        description: "Path to file"
+
+  read-raw:
+    description: "Read file contents (raw, no line numbers)"
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file} --raw"
+    args:
+      - name: file
+        description: "Path to file"
+
+  create:
+    description: "Create new file (fails if exists)"
+    template: "python3 /usr/local/lib/wardgate-tools/file_create.py {file} {content}"
+    args:
+      - name: file
+        description: "Path for new file"
+      - name: content
+        description: "File content"
+
+  update:
+    description: "Replace entire file contents"
+    template: "python3 /usr/local/lib/wardgate-tools/file_update.py {file} {content}"
+    args:
+      - name: file
+        description: "Path to existing file"
+      - name: content
+        description: "New file content"
+    action: ask
+
+  patch:
+    description: "Replace exact text in file (first occurrence)"
+    template: "python3 /usr/local/lib/wardgate-tools/file_patch.py {file} {old_text} {new_text}"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: old_text
+        description: "Exact text to find"
+      - name: new_text
+        description: "Replacement text"
+    action: ask
+
+  patch-all:
+    description: "Replace all occurrences of exact text in file"
+    template: "python3 /usr/local/lib/wardgate-tools/file_patch.py {file} {old_text} {new_text} --all"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: old_text
+        description: "Exact text to find"
+      - name: new_text
+        description: "Replacement text"
+    action: ask
+
+  patch-ws:
+    description: "Replace text with whitespace-normalized matching"
+    template: "python3 /usr/local/lib/wardgate-tools/file_patch.py {file} {old_text} {new_text} --normalize-ws"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: old_text
+        description: "Text to find (whitespace flexible)"
+      - name: new_text
+        description: "Replacement text"
+    action: ask
+
+  insert:
+    description: "Append text to end of file"
+    template: "python3 /usr/local/lib/wardgate-tools/file_insert.py {file} {text}"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: text
+        description: "Text to insert"
+    action: ask
+
+  insert-after:
+    description: "Insert text after first line matching a pattern"
+    template: "python3 /usr/local/lib/wardgate-tools/file_insert.py {file} {text} --after-match {pattern}"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: text
+        description: "Text to insert"
+      - name: pattern
+        description: "Text to match in existing line"
+    action: ask
+
+  insert-before:
+    description: "Insert text before first line matching a pattern"
+    template: "python3 /usr/local/lib/wardgate-tools/file_insert.py {file} {text} --before-match {pattern}"
+    args:
+      - name: file
+        description: "Path to file"
+      - name: text
+        description: "Text to insert"
+      - name: pattern
+        description: "Text to match in existing line"
+    action: ask

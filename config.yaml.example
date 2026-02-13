@@ -102,24 +102,64 @@ presets_dir: ./presets
 #           - name: query
 #             description: "Filename pattern (e.g. *.md)"
 #       grep:
-#         description: "Search note contents (secrets filtered)"
-#         template: "rg {pattern} | grep -v SECRET1 | grep -v SECRET2"
+#         description: "Search note contents"
+#         template: "rg {pattern}"
 #         args:
 #           - name: pattern
 #             description: "Text pattern to search for"
+#
+#       # --- Standard file tools (scripts/file_*.py) ---
+#       # Install scripts to /usr/local/lib/wardgate-tools/ in your conclave.
+#       # See examples/file-tools-commands.yaml for the full set.
 #       read:
-#         description: "Read a note"
-#         template: "cat {file}"
+#         description: "Read a note (numbered lines)"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
 #         args:
 #           - name: file
 #             description: "Path to note file"
-#       write:
-#         description: "Append to daily notes"
-#         template: "add_to_daily_notes.sh {text}"
+#       read-raw:
+#         description: "Read a note (raw content)"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file} --raw"
 #         args:
+#           - name: file
+#             description: "Path to note file"
+#       create:
+#         description: "Create a new note (fails if exists)"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_create.py {file} {content}"
+#         args:
+#           - name: file
+#             description: "Path for new note"
+#           - name: content
+#             description: "Note content"
+#       update:
+#         description: "Replace entire note contents"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_update.py {file} {content}"
+#         args:
+#           - name: file
+#             description: "Path to existing note"
+#           - name: content
+#             description: "New note content"
+#         action: ask
+#       patch:
+#         description: "Replace exact text in a note"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_patch.py {file} {old_text} {new_text}"
+#         args:
+#           - name: file
+#             description: "Path to the note file"
+#           - name: old_text
+#             description: "Exact text to find"
+#           - name: new_text
+#             description: "Replacement text"
+#         action: ask
+#       insert:
+#         description: "Insert text at location in a note"
+#         template: "python3 /usr/local/lib/wardgate-tools/file_insert.py {file} {text}"
+#         args:
+#           - name: file
+#             description: "Path to note file"
 #           - name: text
-#             description: "Text to append"
-#         action: ask  # Require approval for writes
+#             description: "Text to insert (appends to end)"
+#         action: ask
 #     # Optional: also allow raw exec with policy rules
 #     # allow_redirects: false  # Default: false. Set true to allow >, >>, <, etc.
 #     # rules:
