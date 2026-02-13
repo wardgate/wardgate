@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -405,6 +406,25 @@ func (h *ExecHandler) handleRun(w http.ResponseWriter, r *http.Request, conclave
 		return
 	}
 
+	// Validate path args (Layer 1: hard boundaries)
+	if msg, ok := validatePathArgs(cmdDef.Args, req.Args); !ok {
+		writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+			Action:  "deny",
+			Message: msg,
+		})
+		return
+	}
+
+	// Evaluate command rules or fallback to action (Layer 2: policy)
+	action := resolveCommandAction(cmdDef, req.Args)
+	if action == "deny" {
+		writeJSON(w, http.StatusForbidden, ConclaveExecResponse{
+			Action:  "deny",
+			Message: fmt.Sprintf("command %q denied by rule", req.Command),
+		})
+		return
+	}
+
 	// Expand template with provided args
 	expanded, err := execpkg.ExpandTemplate(cmdDef.Template, cmdDef.Args, req.Args)
 	if err != nil {
@@ -423,12 +443,6 @@ func (h *ExecHandler) handleRun(w http.ResponseWriter, r *http.Request, conclave
 	cwd := req.Cwd
 	if cwd == "" {
 		cwd = cc.Cwd
-	}
-
-	// Check action: ask requires approval
-	action := cmdDef.Action
-	if action == "" {
-		action = "allow"
 	}
 
 	if action == "ask" {
@@ -619,6 +633,66 @@ func splitFirstToken(s string) (command, args string) {
 		args = parts[1]
 	}
 	return
+}
+
+// validatePathArgs checks path-type arguments against their allowed_paths constraints.
+// Returns ("", true) if all args are valid, or (message, false) if any arg is rejected.
+func validatePathArgs(args []config.CommandArg, values []string) (string, bool) {
+	for i, arg := range args {
+		if arg.Type != "path" || len(arg.AllowedPaths) == 0 {
+			continue
+		}
+		if i >= len(values) {
+			continue
+		}
+
+		value := filepath.Clean(values[i])
+
+		// Reject absolute paths and traversal above cwd
+		if filepath.IsAbs(value) {
+			return fmt.Sprintf("arg %q: absolute paths not allowed", arg.Name), false
+		}
+		if value == ".." || strings.HasPrefix(value, "../") {
+			return fmt.Sprintf("arg %q: path traversal not allowed", arg.Name), false
+		}
+
+		// Check against allowed_paths globs
+		matched := false
+		for _, pattern := range arg.AllowedPaths {
+			if policy.MatchGlob(pattern, value) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Sprintf("arg %q: path %q not in allowed paths", arg.Name, values[i]), false
+		}
+	}
+	return "", true
+}
+
+// resolveCommandAction determines the action for a command invocation.
+// If the command has rules, evaluates them (first match wins, default deny).
+// Otherwise falls back to CommandDef.Action (default: allow).
+func resolveCommandAction(cmdDef config.CommandDef, values []string) string {
+	if len(cmdDef.Rules) > 0 {
+		// Build arg name -> value map
+		argValues := make(map[string]string, len(cmdDef.Args))
+		for i, arg := range cmdDef.Args {
+			if i < len(values) {
+				argValues[arg.Name] = values[i]
+			}
+		}
+		decision := policy.EvaluateCommandRules(cmdDef.Rules, argValues)
+		return decision.Action.String()
+	}
+
+	// No rules: use static action
+	action := cmdDef.Action
+	if action == "" {
+		action = "allow"
+	}
+	return action
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

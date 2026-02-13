@@ -417,6 +417,60 @@ Rejected: command substitution (`$()`, backticks), process substitution (`<()`, 
 
 See [Conclaves](conclaves.md) for full documentation.
 
+## Command Template Rules
+
+Command templates (`commands:` in conclave config) support per-argument policy rules, evaluated independently from conclave-level exec rules. This lets you set different actions for different argument values - for example, allowing reads in one directory while requiring approval for another.
+
+### Two Layers
+
+1. **Path validation** (`type: path` + `allowed_paths` on args) - hard boundary, rejects immediately
+2. **Command rules** (`rules` on the command) - first-match-wins policy (allow/ask/deny)
+
+### Example
+
+```yaml
+commands:
+  read:
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+    args:
+      - name: file
+        type: path
+        allowed_paths: ["notes/**", "config/**"]
+    rules:
+      - match: { file: "notes/**" }
+        action: allow
+      - match: { file: "config/**" }
+        action: ask
+      # no catch-all -> unmatched paths default deny
+
+  patch:
+    template: "python3 /usr/local/lib/wardgate-tools/file_patch.py {file} {old_text} {new_text}"
+    args:
+      - name: file
+        type: path
+        allowed_paths: ["notes/**"]
+      - name: old_text
+      - name: new_text
+    action: ask  # no rules, static action for all paths
+```
+
+### Rule Evaluation
+
+- Rules are evaluated in order (first match wins)
+- Match keys are arg names, values are glob patterns
+- Multiple match keys in one rule are AND-ed (all must match)
+- If no rule matches, the request is **denied** (consistent with conclave exec rules)
+- When no `rules` are present, the `action` field is used directly (default: `allow`)
+
+### Path Validation
+
+Args with `type: path` are validated before rules are evaluated:
+
+- Absolute paths (`/etc/passwd`) are rejected
+- Path traversal (`../secret`) is rejected
+- The value must match at least one `allowed_paths` glob pattern
+- If `allowed_paths` is omitted, no gateway-level restriction is applied (only the script-level CWD check)
+
 ## Debugging Policies
 
 ### Policy Evaluation Order

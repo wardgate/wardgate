@@ -679,3 +679,164 @@ func TestConclaveListHandler_IncludesCommands(t *testing.T) {
 		t.Error("expected to find 'search' command in list")
 	}
 }
+
+// --- validatePathArgs tests ---
+
+func TestValidatePathArgs_AllowedPath(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"notes/**"}},
+	}
+	msg, ok := validatePathArgs(args, []string{"notes/todo.md"})
+	if !ok {
+		t.Errorf("expected allowed, got denied: %s", msg)
+	}
+}
+
+func TestValidatePathArgs_DisallowedPath(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"notes/**"}},
+	}
+	msg, ok := validatePathArgs(args, []string{"private/secret.txt"})
+	if ok {
+		t.Error("expected denied for path outside allowed_paths")
+	}
+	if !strings.Contains(msg, "not in allowed paths") {
+		t.Errorf("expected 'not in allowed paths' message, got %q", msg)
+	}
+}
+
+func TestValidatePathArgs_TraversalRejected(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"**"}},
+	}
+	msg, ok := validatePathArgs(args, []string{"../etc/passwd"})
+	if ok {
+		t.Error("expected denied for path traversal")
+	}
+	if !strings.Contains(msg, "traversal") {
+		t.Errorf("expected 'traversal' in message, got %q", msg)
+	}
+}
+
+func TestValidatePathArgs_AbsoluteRejected(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"**"}},
+	}
+	msg, ok := validatePathArgs(args, []string{"/etc/passwd"})
+	if ok {
+		t.Error("expected denied for absolute path")
+	}
+	if !strings.Contains(msg, "absolute") {
+		t.Errorf("expected 'absolute' in message, got %q", msg)
+	}
+}
+
+func TestValidatePathArgs_NonPathArgUnaffected(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"notes/**"}},
+		{Name: "old_text"}, // no type: path
+		{Name: "new_text"}, // no type: path
+	}
+	_, ok := validatePathArgs(args, []string{"notes/todo.md", "anything ../../../etc", "/absolute/is/fine/here"})
+	if !ok {
+		t.Error("non-path args should not be validated")
+	}
+}
+
+func TestValidatePathArgs_NoAllowedPaths(t *testing.T) {
+	// type: path but no allowed_paths -> no validation (permissive)
+	args := []config.CommandArg{
+		{Name: "file", Type: "path"},
+	}
+	_, ok := validatePathArgs(args, []string{"anything/goes.txt"})
+	if !ok {
+		t.Error("expected allowed when no allowed_paths configured")
+	}
+}
+
+func TestValidatePathArgs_MultipleAllowedPaths(t *testing.T) {
+	args := []config.CommandArg{
+		{Name: "file", Type: "path", AllowedPaths: []string{"notes/**", "config/**"}},
+	}
+
+	tests := []struct {
+		path   string
+		expect bool
+	}{
+		{"notes/todo.md", true},
+		{"config/app.yaml", true},
+		{"private/secret.txt", false},
+	}
+
+	for _, tt := range tests {
+		_, ok := validatePathArgs(args, []string{tt.path})
+		if ok != tt.expect {
+			t.Errorf("path %q: expected ok=%v, got ok=%v", tt.path, tt.expect, ok)
+		}
+	}
+}
+
+// --- resolveCommandAction tests ---
+
+func TestResolveCommandAction_NoRulesFallback(t *testing.T) {
+	cmdDef := config.CommandDef{Action: "ask"}
+	action := resolveCommandAction(cmdDef, []string{"notes/todo.md"})
+	if action != "ask" {
+		t.Errorf("expected 'ask', got %q", action)
+	}
+}
+
+func TestResolveCommandAction_NoRulesNoActionDefaultAllow(t *testing.T) {
+	cmdDef := config.CommandDef{}
+	action := resolveCommandAction(cmdDef, nil)
+	if action != "allow" {
+		t.Errorf("expected 'allow' default, got %q", action)
+	}
+}
+
+func TestResolveCommandAction_RulesMatchAllow(t *testing.T) {
+	cmdDef := config.CommandDef{
+		Args: []config.CommandArg{{Name: "file"}},
+		Rules: []config.CommandRule{
+			{Match: map[string]string{"file": "notes/**"}, Action: "allow"},
+		},
+	}
+	action := resolveCommandAction(cmdDef, []string{"notes/todo.md"})
+	if action != "allow" {
+		t.Errorf("expected 'allow', got %q", action)
+	}
+}
+
+func TestResolveCommandAction_RulesMatchAsk(t *testing.T) {
+	cmdDef := config.CommandDef{
+		Args: []config.CommandArg{{Name: "file"}},
+		Rules: []config.CommandRule{
+			{Match: map[string]string{"file": "config/**"}, Action: "ask"},
+		},
+	}
+	action := resolveCommandAction(cmdDef, []string{"config/app.yaml"})
+	if action != "ask" {
+		t.Errorf("expected 'ask', got %q", action)
+	}
+}
+
+func TestResolveCommandAction_RulesNoMatchDefaultDeny(t *testing.T) {
+	cmdDef := config.CommandDef{
+		Args: []config.CommandArg{{Name: "file"}},
+		Rules: []config.CommandRule{
+			{Match: map[string]string{"file": "notes/**"}, Action: "allow"},
+		},
+	}
+	action := resolveCommandAction(cmdDef, []string{"private/secret.txt"})
+	if action != "deny" {
+		t.Errorf("expected 'deny' (default when rules present, no match), got %q", action)
+	}
+}
+
+func TestResolveCommandAction_DenyAction(t *testing.T) {
+	cmdDef := config.CommandDef{Action: "deny"}
+	action := resolveCommandAction(cmdDef, nil)
+	if action != "deny" {
+		t.Errorf("expected 'deny', got %q", action)
+	}
+}

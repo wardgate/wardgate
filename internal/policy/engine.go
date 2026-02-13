@@ -139,7 +139,7 @@ func (e *Engine) EvaluateExec(command, args, cwd, key string) Decision {
 func (e *Engine) matchExecRule(rule config.Rule, command, args, cwd string) bool {
 	// Check command pattern
 	if rule.Match.Command != "" && rule.Match.Command != "*" {
-		if !matchGlob(rule.Match.Command, command) {
+		if !MatchGlob(rule.Match.Command, command) {
 			return false
 		}
 	}
@@ -154,7 +154,7 @@ func (e *Engine) matchExecRule(rule config.Rule, command, args, cwd string) bool
 
 	// Check cwd pattern
 	if rule.Match.CwdPattern != "" {
-		if !matchGlob(rule.Match.CwdPattern, cwd) {
+		if !MatchGlob(rule.Match.CwdPattern, cwd) {
 			return false
 		}
 	}
@@ -183,16 +183,16 @@ func (e *Engine) matchRule(rule config.Rule, method, path string) bool {
 func matchPath(pattern, path string) bool {
 	// Handle glob patterns with * in the middle (e.g., "/tasks/*/close")
 	if strings.Contains(pattern, "*") {
-		return matchGlob(pattern, path)
+		return MatchGlob(pattern, path)
 	}
 	// Exact match
 	return pattern == path
 }
 
-// matchGlob matches a path against a glob pattern.
+// MatchGlob matches a path against a glob pattern.
 // Supports * as a wildcard for a single path segment.
 // Supports ** or trailing * for matching multiple segments.
-func matchGlob(pattern, path string) bool {
+func MatchGlob(pattern, path string) bool {
 	// Trailing wildcard: "/tasks*" or "/tasks/*"
 	if strings.HasSuffix(pattern, "*") && !strings.HasSuffix(pattern, "**") {
 		prefix := strings.TrimSuffix(pattern, "*")
@@ -217,7 +217,7 @@ func matchGlob(pattern, path string) bool {
 			}
 			// Try to match remaining pattern
 			for j := i; j <= len(pathParts); j++ {
-				if matchGlob(strings.Join(patternParts[pi+1:], "/"), strings.Join(pathParts[j:], "/")) {
+				if MatchGlob(strings.Join(patternParts[pi+1:], "/"), strings.Join(pathParts[j:], "/")) {
 					return true
 				}
 			}

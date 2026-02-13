@@ -166,17 +166,28 @@ type ToolsConfig struct {
 
 // CommandArg defines a named argument for a command template.
 type CommandArg struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description,omitempty"`
+	Name         string   `yaml:"name"`
+	Description  string   `yaml:"description,omitempty"`
+	Type         string   `yaml:"type,omitempty"`          // "path" enables path validation
+	AllowedPaths []string `yaml:"allowed_paths,omitempty"` // glob patterns (requires type: path)
+}
+
+// CommandRule defines a policy rule for a command template.
+// Match keys are arg names, values are glob patterns.
+type CommandRule struct {
+	Match   map[string]string `yaml:"match"`
+	Action  string            `yaml:"action"`
+	Message string            `yaml:"message,omitempty"`
 }
 
 // CommandDef defines a pre-made command template for a conclave.
 // Agents invoke it by name, supplying only the argument values.
 type CommandDef struct {
-	Description string       `yaml:"description,omitempty"`
-	Template    string       `yaml:"template"`
-	Args        []CommandArg `yaml:"args,omitempty"`
-	Action      string       `yaml:"action,omitempty"` // allow (default), ask
+	Description string         `yaml:"description,omitempty"`
+	Template    string         `yaml:"template"`
+	Args        []CommandArg   `yaml:"args,omitempty"`
+	Action      string         `yaml:"action,omitempty"` // allow (default), ask, deny
+	Rules       []CommandRule  `yaml:"rules,omitempty"`  // per-arg policy rules (first match wins, default deny)
 }
 
 // ConclaveConfig defines a remote execution conclave.

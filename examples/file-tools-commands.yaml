@@ -2,12 +2,18 @@
 #
 # These command templates wrap the Python scripts in scripts/file_*.py.
 # Copy the commands you need into your conclave config, adjusting the
-# script path and action (allow/ask) as needed.
+# script path and action (allow/ask/deny) as needed.
 #
 # Scripts should be installed at /usr/local/lib/wardgate-tools/ in the
 # conclave container (see Dockerfile.conclave).
 #
 # This is a reference file - not loaded automatically by wardgate.
+#
+# Path control:
+#   type: path + allowed_paths  - hard boundary on which paths are valid
+#   rules                       - per-path action (allow/ask/deny, first match wins)
+#   action                      - fallback when no rules (default: allow)
+#                                 ignored when rules are present (no match = deny)
 
 # commands:
   read:
@@ -16,6 +22,9 @@
     args:
       - name: file
         description: "Path to file"
+        type: path                              # enables path validation
+        allowed_paths: ["**"]                   # adjust to restrict paths
+    action: allow
 
   read-raw:
     description: "Read file contents (raw, no line numbers)"
@@ -23,6 +32,9 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
+    action: allow
 
   create:
     description: "Create new file (fails if exists)"
@@ -30,8 +42,11 @@
     args:
       - name: file
         description: "Path for new file"
+        type: path
+        allowed_paths: ["**"]
       - name: content
         description: "File content"
+    action: ask
 
   update:
     description: "Replace entire file contents"
@@ -39,6 +54,8 @@
     args:
       - name: file
         description: "Path to existing file"
+        type: path
+        allowed_paths: ["**"]
       - name: content
         description: "New file content"
     action: ask
@@ -49,6 +66,8 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: old_text
         description: "Exact text to find"
       - name: new_text
@@ -61,6 +80,8 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: old_text
         description: "Exact text to find"
       - name: new_text
@@ -73,6 +94,8 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: old_text
         description: "Text to find (whitespace flexible)"
       - name: new_text
@@ -85,6 +108,8 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: text
         description: "Text to insert"
     action: ask
@@ -95,6 +120,8 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: text
         description: "Text to insert"
       - name: pattern
@@ -107,8 +134,27 @@
     args:
       - name: file
         description: "Path to file"
+        type: path
+        allowed_paths: ["**"]
       - name: text
         description: "Text to insert"
       - name: pattern
         description: "Text to match in existing line"
     action: ask
+
+# --- Example with per-path rules ---
+# This shows how to use rules for different actions per directory:
+#
+#   read:
+#     description: "Read file contents"
+#     template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+#     args:
+#       - name: file
+#         type: path
+#         allowed_paths: ["notes/**", "config/**"]
+#     rules:
+#       - match: { file: "notes/**" }
+#         action: allow
+#       - match: { file: "config/**" }
+#         action: ask
+#     # unmatched paths -> default deny (no catch-all rule)

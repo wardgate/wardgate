@@ -205,7 +205,52 @@ Defining a command IS the policy - no rules evaluation is needed. The agent can 
 | `description` | string | No | Human-readable description (shown in discovery) |
 | `template` | string | Yes | Command string with `{argname}` placeholders |
 | `args` | array | No | Ordered list of named arguments |
-| `action` | string | No | `allow` (default) or `ask` (require approval) |
+| `args[].name` | string | Yes | Argument name (matches placeholder in template) |
+| `args[].description` | string | No | Human-readable description |
+| `args[].type` | string | No | `path` enables path validation |
+| `args[].allowed_paths` | array | No | Glob patterns restricting valid paths (requires `type: path`) |
+| `action` | string | No | `allow` (default), `ask`, or `deny` |
+| `rules` | array | No | Per-arg policy rules (first match wins, default deny) |
+
+### Path-Type Arguments
+
+Mark arguments as `type: path` to enable validation at the gateway:
+
+```yaml
+commands:
+  read:
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+    args:
+      - name: file
+        type: path
+        allowed_paths: ["notes/**", "config/**"]
+```
+
+Path validation rejects absolute paths and traversal (`../`) before template expansion. The `allowed_paths` globs define which relative paths are valid.
+
+### Per-Command Rules
+
+Commands can have their own rules for per-argument action differentiation:
+
+```yaml
+commands:
+  read:
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+    args:
+      - name: file
+        type: path
+        allowed_paths: ["notes/**", "config/**"]
+    rules:
+      - match: { file: "notes/**" }
+        action: allow
+      - match: { file: "config/**" }
+        action: ask
+      # no catch-all -> unmatched paths default deny
+```
+
+Rules are evaluated in order (first match wins). Match keys are arg names, values are glob patterns. When rules are present and none match, the request is denied. When no rules are present, the `action` field is used directly.
+
+See [Policy Documentation](policies.md) for full details on command template rules.
 
 ### Argument Escaping
 

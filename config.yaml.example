@@ -111,32 +111,56 @@ presets_dir: ./presets
 #       # --- Standard file tools (scripts/file_*.py) ---
 #       # Install scripts to /usr/local/lib/wardgate-tools/ in your conclave.
 #       # See examples/file-tools-commands.yaml for the full set.
+#       #
+#       # Path args support two layers of control:
+#       #   type: path + allowed_paths  - hard boundary (rejects immediately)
+#       #   rules                       - policy (allow/ask/deny per path)
 #       read:
 #         description: "Read a note (numbered lines)"
 #         template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
 #         args:
 #           - name: file
 #             description: "Path to note file"
+#             type: path
+#             allowed_paths: ["notes/**", "config/**"]
+#         rules:
+#           - match: { file: "notes/**" }
+#             action: allow
+#           - match: { file: "config/**" }
+#             action: ask
+#         # no catch-all -> unmatched paths default deny
 #       read-raw:
 #         description: "Read a note (raw content)"
 #         template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file} --raw"
 #         args:
 #           - name: file
 #             description: "Path to note file"
+#             type: path
+#             allowed_paths: ["notes/**", "config/**"]
+#         rules:
+#           - match: { file: "notes/**" }
+#             action: allow
+#           - match: { file: "config/**" }
+#             action: ask
 #       create:
 #         description: "Create a new note (fails if exists)"
 #         template: "python3 /usr/local/lib/wardgate-tools/file_create.py {file} {content}"
 #         args:
 #           - name: file
 #             description: "Path for new note"
+#             type: path
+#             allowed_paths: ["notes/**"]
 #           - name: content
 #             description: "Note content"
+#         action: ask
 #       update:
 #         description: "Replace entire note contents"
 #         template: "python3 /usr/local/lib/wardgate-tools/file_update.py {file} {content}"
 #         args:
 #           - name: file
 #             description: "Path to existing note"
+#             type: path
+#             allowed_paths: ["notes/**"]
 #           - name: content
 #             description: "New note content"
 #         action: ask
@@ -146,6 +170,8 @@ presets_dir: ./presets
 #         args:
 #           - name: file
 #             description: "Path to the note file"
+#             type: path
+#             allowed_paths: ["notes/**"]
 #           - name: old_text
 #             description: "Exact text to find"
 #           - name: new_text
@@ -157,6 +183,8 @@ presets_dir: ./presets
 #         args:
 #           - name: file
 #             description: "Path to note file"
+#             type: path
+#             allowed_paths: ["notes/**"]
 #           - name: text
 #             description: "Text to insert (appends to end)"
 #         action: ask

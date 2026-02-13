@@ -725,7 +725,43 @@ conclaves:
 | `args` | array | No | Ordered argument definitions |
 | `args[].name` | string | Yes | Argument name (matches placeholder in template) |
 | `args[].description` | string | No | Human-readable description |
-| `action` | string | No | `allow` (default) or `ask` |
+| `args[].type` | string | No | `path` enables path validation (rejects absolute paths and traversal) |
+| `args[].allowed_paths` | array | No | Glob patterns restricting valid paths (requires `type: path`) |
+| `action` | string | No | `allow` (default), `ask`, or `deny`. Fallback when no `rules` match |
+| `rules` | array | No | Per-arg policy rules (first match wins, default deny when present) |
+| `rules[].match` | map | Yes | Arg name to glob pattern (all must match, AND logic) |
+| `rules[].action` | string | Yes | `allow`, `ask`, or `deny` |
+| `rules[].message` | string | No | Message to return (for `deny`) |
+
+#### Path Validation
+
+Args with `type: path` and `allowed_paths` are validated before template expansion:
+
+- Absolute paths are rejected
+- Path traversal (`../`) is rejected
+- The value must match at least one `allowed_paths` glob pattern
+
+This is a hard boundary - rejected paths return 403 immediately.
+
+#### Command Rules
+
+When `rules` is present on a command, they are evaluated in order (first match wins). If no rule matches, the request is denied (consistent with conclave-level rules). When `rules` is absent, the `action` field is used directly.
+
+```yaml
+commands:
+  read:
+    template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+    args:
+      - name: file
+        type: path
+        allowed_paths: ["notes/**", "config/**"]
+    rules:
+      - match: { file: "notes/**" }
+        action: allow
+      - match: { file: "config/**" }
+        action: ask
+      # unmatched paths -> default deny
+```
 
 Agents run commands via `wardgate-cli run <conclave> <command> [args...]`. Arguments are shell-escaped before substitution. See [Conclaves](conclaves.md) for details.
 
