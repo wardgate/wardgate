@@ -692,6 +692,41 @@ conclaves:
 | `cwd` | string | No | Default working directory for commands |
 | `commands` | map | No | Named command templates (see below) |
 | `rules` | array | No | Policy rules using exec match fields |
+| `filter` | object | No | Output filter for sensitive data (see [Output Filtering](#conclave-output-filtering)) |
+
+### Conclave Output Filtering
+
+Conclave output (stdout/stderr) can be scanned for sensitive data before returning to the agent. This reuses the same filter engine as endpoint filtering.
+
+```yaml
+conclaves:
+  obsidian:
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    filter:
+      enabled: true
+      patterns: [api_keys, passwords, private_keys]
+      action: block
+    commands:
+      search:
+        template: "find . -iname {query}"
+        args: [{ name: query }]
+        filter:
+          enabled: false  # filenames only, skip filtering
+      read:
+        template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+        args: [{ name: file }]
+        # inherits conclave filter
+```
+
+Two levels of configuration:
+
+- **Per-conclave** `filter:` - default for all commands and raw exec
+- **Per-command** `filter:` on a command definition - overrides the conclave default
+
+The filter fields are the same as endpoint filtering (`enabled`, `patterns`, `custom_patterns`, `action`, `replacement`). Supported actions for conclave output: `block`, `redact`, `log` (not `ask` - the command has already executed).
+
+When `action` is `block` and sensitive data is found, the response returns 403 with a description of what was detected. When `action` is `redact`, matches are replaced in-place. When `action` is `log`, matches are logged but output is returned unchanged.
 
 ### Command Templates
 
@@ -1065,8 +1100,11 @@ endpoints:
 | HTTP | Response bodies (JSON, text, XML) | `block` |
 | IMAP | Message subject and body | `block` |
 | SMTP | Outgoing email subject/body (triggers `ask`) | `ask` |
+| Conclave | Command stdout/stderr | `block` |
 
 For SMTP, detecting sensitive data triggers the approval workflow rather than blocking, so humans can review before sending.
+
+For conclaves, `ask` is not supported (the command has already executed). Use `block`, `redact`, or `log` instead. Per-command `filter:` on a command definition overrides the conclave default.
 
 ### Example: Secure Email Access
 

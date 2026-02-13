@@ -211,6 +211,7 @@ Defining a command IS the policy - no rules evaluation is needed. The agent can 
 | `args[].allowed_paths` | array | No | Glob patterns restricting valid paths (requires `type: path`) |
 | `action` | string | No | `allow` (default), `ask`, or `deny` |
 | `rules` | array | No | Per-arg policy rules (first match wins, default deny) |
+| `filter` | object | No | Output filter override (nil = inherit conclave default) |
 
 ### Path-Type Arguments
 
@@ -263,6 +264,56 @@ When an agent calls `wardgate-cli conclaves`, the response includes available co
 ### Commands vs Rules
 
 You can use `commands` and `rules` together on the same conclave. Commands provide a safe, restricted interface for common operations, while rules gate raw `exec` access for cases where the agent needs more flexibility.
+
+## Output Filtering
+
+Conclave output (stdout/stderr) can be scanned for sensitive data before returning to the agent. This prevents accidental leakage of API keys, passwords, private keys, and other sensitive content.
+
+### Configuration
+
+Add a `filter:` block to a conclave to enable output filtering for all commands and raw exec:
+
+```yaml
+conclaves:
+  obsidian:
+    key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
+    cwd: /data/vault
+    filter:
+      enabled: true
+      patterns: [api_keys, passwords, private_keys]
+      action: block
+```
+
+Individual commands can override the conclave default:
+
+```yaml
+    commands:
+      search:
+        template: "find . -iname {query}"
+        args: [{ name: query }]
+        filter:
+          enabled: false  # filenames only, no sensitive data possible
+      read:
+        template: "python3 /usr/local/lib/wardgate-tools/file_read.py {file}"
+        args: [{ name: file }]
+        # no filter override -> inherits conclave filter
+```
+
+### Actions
+
+| Action | Behavior |
+|--------|----------|
+| `block` | Return 403 with description of detected data; stdout/stderr withheld |
+| `redact` | Replace matches with `[SENSITIVE DATA REDACTED]` (or custom replacement) |
+| `log` | Log the detection but return output unchanged |
+
+`ask` is not supported for conclave output (the command has already executed).
+
+### Resolution Order
+
+1. If the command has its own `filter:`, use it
+2. Otherwise, use the conclave's `filter:`
+3. If neither is set, output passes through unfiltered
 
 ## Pipeline Support
 

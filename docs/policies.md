@@ -417,6 +417,10 @@ Rejected: command substitution (`$()`, backticks), process substitution (`<()`, 
 
 See [Conclaves](conclaves.md) for full documentation.
 
+### Output Filtering
+
+Conclave output (stdout/stderr) can be filtered for sensitive data using the same filter engine as endpoint filtering. Configure `filter:` on the conclave for a default, and optionally override per-command. Supported actions: `block`, `redact`, `log`. See [Conclaves - Output Filtering](conclaves.md#output-filtering) and [Config - Conclave Output Filtering](config.md#conclave-output-filtering) for details.
+
 ## Command Template Rules
 
 Command templates (`commands:` in conclave config) support per-argument policy rules, evaluated independently from conclave-level exec rules. This lets you set different actions for different argument values - for example, allowing reads in one directory while requiring approval for another.

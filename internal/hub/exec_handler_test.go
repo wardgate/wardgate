@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wardgate/wardgate/internal/config"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/grants"
 )
 
@@ -838,5 +839,308 @@ func TestResolveCommandAction_DenyAction(t *testing.T) {
 	action := resolveCommandAction(cmdDef, nil)
 	if action != "deny" {
 		t.Errorf("expected 'deny', got %q", action)
+	}
+}
+
+// --- filterOutput tests ---
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestFilterOutput_BlockAction(t *testing.T) {
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"api_keys"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	h := &ExecHandler{}
+	stdout := "Here is a key: sk-1234567890abcdefghijklmnop"
+	stderr := ""
+
+	outStdout, outStderr, blocked := h.filterOutput(f, stdout, stderr)
+	if blocked == nil {
+		t.Fatal("expected output to be blocked")
+	}
+	if blocked.Action != "deny" {
+		t.Errorf("expected action 'deny', got %q", blocked.Action)
+	}
+	if !strings.Contains(blocked.Message, "output blocked") {
+		t.Errorf("expected 'output blocked' in message, got %q", blocked.Message)
+	}
+	if outStdout != "" || outStderr != "" {
+		t.Error("expected empty stdout/stderr when blocked")
+	}
+}
+
+func TestFilterOutput_RedactAction(t *testing.T) {
+	f, err := filter.New(filter.Config{
+		Enabled:     true,
+		Patterns:    []string{"api_keys"},
+		Action:      filter.ActionRedact,
+		Replacement: "[REDACTED]",
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	h := &ExecHandler{}
+	stdout := "key is sk-1234567890abcdefghijklmnop end"
+	stderr := "err sk-aaaabbbbccccddddeeeeffffgggg"
+
+	outStdout, outStderr, blocked := h.filterOutput(f, stdout, stderr)
+	if blocked != nil {
+		t.Fatalf("expected no block, got: %v", blocked)
+	}
+	if strings.Contains(outStdout, "sk-") {
+		t.Errorf("expected key redacted from stdout, got %q", outStdout)
+	}
+	if !strings.Contains(outStdout, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] in stdout, got %q", outStdout)
+	}
+	if strings.Contains(outStderr, "sk-") {
+		t.Errorf("expected key redacted from stderr, got %q", outStderr)
+	}
+}
+
+func TestFilterOutput_LogAction(t *testing.T) {
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"api_keys"},
+		Action:   filter.ActionLog,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	h := &ExecHandler{}
+	stdout := "key is sk-1234567890abcdefghijklmnop"
+	stderr := ""
+
+	outStdout, outStderr, blocked := h.filterOutput(f, stdout, stderr)
+	if blocked != nil {
+		t.Fatal("log action should not block")
+	}
+	// Log action returns content unchanged
+	if outStdout != stdout {
+		t.Errorf("expected unchanged stdout, got %q", outStdout)
+	}
+	if outStderr != stderr {
+		t.Errorf("expected unchanged stderr, got %q", outStderr)
+	}
+}
+
+func TestFilterOutput_NoFilter(t *testing.T) {
+	h := &ExecHandler{}
+	stdout := "key is sk-1234567890abcdefghijklmnop"
+	stderr := "some error"
+
+	outStdout, outStderr, blocked := h.filterOutput(nil, stdout, stderr)
+	if blocked != nil {
+		t.Fatal("nil filter should not block")
+	}
+	if outStdout != stdout || outStderr != stderr {
+		t.Error("nil filter should pass through unchanged")
+	}
+}
+
+func TestFilterOutput_DisabledFilter(t *testing.T) {
+	f, err := filter.New(filter.Config{
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	h := &ExecHandler{}
+	stdout := "key is sk-1234567890abcdefghijklmnop"
+
+	outStdout, _, blocked := h.filterOutput(f, stdout, "")
+	if blocked != nil {
+		t.Fatal("disabled filter should not block")
+	}
+	if outStdout != stdout {
+		t.Error("disabled filter should pass through unchanged")
+	}
+}
+
+func TestFilterOutput_NoMatchPassthrough(t *testing.T) {
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"api_keys"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	h := &ExecHandler{}
+	stdout := "hello world, no sensitive data here"
+
+	outStdout, _, blocked := h.filterOutput(f, stdout, "")
+	if blocked != nil {
+		t.Fatal("no matches should not block")
+	}
+	if outStdout != stdout {
+		t.Error("no matches should pass through unchanged")
+	}
+}
+
+// --- resolveFilter tests ---
+
+func TestResolveFilter_ConclaveDefault(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"vault": {Name: "vault", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"vault": {
+			KeyEnv: "TEST_CONCLAVE_KEY",
+			Filter: &config.FilterConfig{
+				Enabled:  boolPtr(true),
+				Patterns: []string{"api_keys"},
+				Action:   "block",
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	f := h.resolveFilter("vault", nil)
+	if f == nil {
+		t.Fatal("expected conclave default filter")
+	}
+	if !f.Enabled() {
+		t.Error("expected filter to be enabled")
+	}
+}
+
+func TestResolveFilter_CommandOverride(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"vault": {Name: "vault", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"vault": {
+			KeyEnv: "TEST_CONCLAVE_KEY",
+			Filter: &config.FilterConfig{
+				Enabled:  boolPtr(true),
+				Patterns: []string{"api_keys"},
+				Action:   "block",
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	// Command disables filter
+	cmdFilter := &config.FilterConfig{Enabled: boolPtr(false)}
+	f := h.resolveFilter("vault", cmdFilter)
+	if f == nil {
+		t.Fatal("expected non-nil filter (disabled)")
+	}
+	if f.Enabled() {
+		t.Error("command override should disable the filter")
+	}
+}
+
+func TestResolveFilter_NoFilter(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"vault": {Name: "vault", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"vault": {
+			KeyEnv: "TEST_CONCLAVE_KEY",
+			// No filter configured
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	f := h.resolveFilter("vault", nil)
+	if f != nil {
+		t.Error("expected nil filter when none configured")
+	}
+}
+
+func TestResolveFilter_CommandInheritsConclaveFilter(t *testing.T) {
+	os.Setenv("TEST_CONCLAVE_KEY", "test-key")
+	t.Cleanup(func() { os.Unsetenv("TEST_CONCLAVE_KEY") })
+
+	hub := NewHub("test", map[string]ConclaveConfig{
+		"vault": {Name: "vault", KeyEnv: "TEST_CONCLAVE_KEY"},
+	})
+
+	conclaves := map[string]config.ConclaveConfig{
+		"vault": {
+			KeyEnv: "TEST_CONCLAVE_KEY",
+			Filter: &config.FilterConfig{
+				Enabled:  boolPtr(true),
+				Patterns: []string{"api_keys"},
+				Action:   "block",
+			},
+		},
+	}
+
+	h := NewExecHandler(hub, conclaves)
+
+	// nil cmdFilter = inherit conclave
+	f := h.resolveFilter("vault", nil)
+	if f == nil {
+		t.Fatal("expected to inherit conclave filter")
+	}
+	if f.Action() != filter.ActionBlock {
+		t.Errorf("expected block action, got %v", f.Action())
+	}
+}
+
+// --- configToFilter tests ---
+
+func TestConfigToFilter_Nil(t *testing.T) {
+	f, err := configToFilter(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f != nil {
+		t.Error("expected nil filter for nil config")
+	}
+}
+
+func TestConfigToFilter_EnabledDefaultsTrue(t *testing.T) {
+	cfg := &config.FilterConfig{
+		Patterns: []string{"api_keys"},
+		Action:   "block",
+	}
+	f, err := configToFilter(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !f.Enabled() {
+		t.Error("expected filter enabled by default")
+	}
+}
+
+func TestConfigToFilter_ExplicitDisabled(t *testing.T) {
+	cfg := &config.FilterConfig{
+		Enabled: boolPtr(false),
+	}
+	f, err := configToFilter(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f.Enabled() {
+		t.Error("expected filter disabled")
 	}
 }

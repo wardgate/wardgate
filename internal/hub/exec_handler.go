@@ -12,6 +12,7 @@ import (
 	"github.com/wardgate/wardgate/internal/auth"
 	"github.com/wardgate/wardgate/internal/config"
 	execpkg "github.com/wardgate/wardgate/internal/exec"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
 )
@@ -39,6 +40,7 @@ type ExecHandler struct {
 	configs     map[string]config.ConclaveConfig // conclave name -> config
 	approvalMgr *approval.Manager
 	grantStore  *grants.Store
+	filters     map[string]*filter.Filter // conclave name -> default output filter
 }
 
 // SetGrantStore sets the grant store for dynamic policy overrides.
@@ -49,13 +51,21 @@ func (h *ExecHandler) SetGrantStore(s *grants.Store) {
 // NewExecHandler creates a new conclave exec handler.
 func NewExecHandler(hub *Hub, conclaves map[string]config.ConclaveConfig) *ExecHandler {
 	engines := make(map[string]*policy.Engine, len(conclaves))
+	filters := make(map[string]*filter.Filter, len(conclaves))
 	for name, cc := range conclaves {
 		engines[name] = policy.New(cc.Rules)
+		if cc.Filter != nil {
+			f, err := configToFilter(cc.Filter)
+			if err == nil && f != nil {
+				filters[name] = f
+			}
+		}
 	}
 	return &ExecHandler{
 		hub:     hub,
 		engines: engines,
 		configs: conclaves,
+		filters: filters,
 	}
 }
 
@@ -318,10 +328,22 @@ func (h *ExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				stderr.WriteString(msg.Data)
 			case MsgExit:
 				exitCode = msg.Code
+				outStdout, outStderr := stdout.String(), stderr.String()
+
+				// Apply conclave-level output filter
+				if f := h.filters[conclaveName]; f != nil {
+					var blocked *ConclaveExecResponse
+					outStdout, outStderr, blocked = h.filterOutput(f, outStdout, outStderr)
+					if blocked != nil {
+						writeJSON(w, http.StatusForbidden, *blocked)
+						return
+					}
+				}
+
 				writeJSON(w, http.StatusOK, ConclaveExecResponse{
 					Action:   "allow",
-					Stdout:   stdout.String(),
-					Stderr:   stderr.String(),
+					Stdout:   outStdout,
+					Stderr:   outStderr,
 					ExitCode: &exitCode,
 				})
 				return
@@ -545,10 +567,22 @@ func (h *ExecHandler) handleRun(w http.ResponseWriter, r *http.Request, conclave
 				stderr.WriteString(msg.Data)
 			case MsgExit:
 				exitCode = msg.Code
+				outStdout, outStderr := stdout.String(), stderr.String()
+
+				// Apply output filter (command override > conclave default)
+				if f := h.resolveFilter(conclaveName, cmdDef.Filter); f != nil {
+					var blocked *ConclaveExecResponse
+					outStdout, outStderr, blocked = h.filterOutput(f, outStdout, outStderr)
+					if blocked != nil {
+						writeJSON(w, http.StatusForbidden, *blocked)
+						return
+					}
+				}
+
 				writeJSON(w, http.StatusOK, ConclaveExecResponse{
 					Action:   "allow",
-					Stdout:   stdout.String(),
-					Stderr:   stderr.String(),
+					Stdout:   outStdout,
+					Stderr:   outStderr,
 					ExitCode: &exitCode,
 				})
 				return
@@ -693,6 +727,70 @@ func resolveCommandAction(cmdDef config.CommandDef, values []string) string {
 		action = "allow"
 	}
 	return action
+}
+
+// configToFilter converts a config.FilterConfig to a filter.Filter.
+func configToFilter(cfg *config.FilterConfig) (*filter.Filter, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	enabled := true
+	if cfg.Enabled != nil {
+		enabled = *cfg.Enabled
+	}
+	fc := filter.Config{
+		Enabled:     enabled,
+		Patterns:    cfg.Patterns,
+		Action:      filter.ParseAction(cfg.Action),
+		Replacement: cfg.Replacement,
+	}
+	for _, cp := range cfg.CustomPatterns {
+		fc.CustomPatterns = append(fc.CustomPatterns, filter.CustomPattern{
+			Name:    cp.Name,
+			Pattern: cp.Pattern,
+		})
+	}
+	return filter.New(fc)
+}
+
+// filterOutput scans stdout/stderr through a filter and applies the configured action.
+// Returns (stdout, stderr, blockedResponse). If blockedResponse is non-nil, the output was blocked.
+func (h *ExecHandler) filterOutput(f *filter.Filter, stdout, stderr string) (string, string, *ConclaveExecResponse) {
+	if f == nil || !f.Enabled() {
+		return stdout, stderr, nil
+	}
+	combined := stdout + stderr
+	matches := f.Scan(combined)
+	if len(matches) == 0 {
+		return stdout, stderr, nil
+	}
+	switch f.Action() {
+	case filter.ActionBlock:
+		desc := filter.MatchDescription(matches)
+		return "", "", &ConclaveExecResponse{
+			Action:  "deny",
+			Message: "output blocked: " + desc,
+		}
+	case filter.ActionLog:
+		// Log but return content unchanged
+		return stdout, stderr, nil
+	default:
+		// Redact: apply to stdout and stderr separately
+		return f.Apply(stdout, f.Scan(stdout)), f.Apply(stderr, f.Scan(stderr)), nil
+	}
+}
+
+// resolveFilter returns the effective filter for a command on a conclave.
+// Command-level filter overrides conclave default.
+func (h *ExecHandler) resolveFilter(conclaveName string, cmdFilter *config.FilterConfig) *filter.Filter {
+	if cmdFilter != nil {
+		f, err := configToFilter(cmdFilter)
+		if err != nil {
+			return nil
+		}
+		return f
+	}
+	return h.filters[conclaveName]
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

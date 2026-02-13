@@ -183,11 +183,12 @@ type CommandRule struct {
 // CommandDef defines a pre-made command template for a conclave.
 // Agents invoke it by name, supplying only the argument values.
 type CommandDef struct {
-	Description string         `yaml:"description,omitempty"`
-	Template    string         `yaml:"template"`
-	Args        []CommandArg   `yaml:"args,omitempty"`
-	Action      string         `yaml:"action,omitempty"` // allow (default), ask, deny
-	Rules       []CommandRule  `yaml:"rules,omitempty"`  // per-arg policy rules (first match wins, default deny)
+	Description string        `yaml:"description,omitempty"`
+	Template    string        `yaml:"template"`
+	Args        []CommandArg  `yaml:"args,omitempty"`
+	Action      string        `yaml:"action,omitempty"` // allow (default), ask, deny
+	Rules       []CommandRule `yaml:"rules,omitempty"`  // per-arg policy rules (first match wins, default deny)
+	Filter      *FilterConfig `yaml:"filter,omitempty"` // output filter override (nil = inherit conclave)
 }
 
 // ConclaveConfig defines a remote execution conclave.
@@ -201,6 +202,7 @@ type ConclaveConfig struct {
 	AllowRedirects bool                  `yaml:"allow_redirects,omitempty"`
 	Rules          []Rule                `yaml:"rules,omitempty"`
 	Commands       map[string]CommandDef `yaml:"commands,omitempty"`
+	Filter         *FilterConfig         `yaml:"filter,omitempty"` // Default output filter for all commands
 }
 
 // Config is the root configuration structure.

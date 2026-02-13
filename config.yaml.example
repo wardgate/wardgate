@@ -94,6 +94,13 @@ presets_dir: ./presets
 #     key_env: WARDGATE_CONCLAVE_OBSIDIAN_KEY
 #     agents: [agent-name]  # Optional: restrict to specific agents (omit for all)
 #     cwd: /data/vault
+#
+#     # Output filtering - scan stdout/stderr for sensitive data before returning
+#     filter:
+#       enabled: true
+#       patterns: [api_keys, passwords, private_keys]
+#       action: block  # block, redact, or log (not ask - command already ran)
+#
 #     commands:
 #       search:
 #         description: "Search notes by filename"
@@ -101,6 +108,8 @@ presets_dir: ./presets
 #         args:
 #           - name: query
 #             description: "Filename pattern (e.g. *.md)"
+#         filter:
+#           enabled: false  # filenames only, no sensitive data
 #       grep:
 #         description: "Search note contents"
 #         template: "rg {pattern}"
