@@ -19,6 +19,8 @@ filter_defaults:
     - otp_codes           # OTP/verification codes (e.g., "Code: 123456")
     - verification_links  # Email verification/password reset URLs
     - api_keys            # Common API key formats (sk-..., ghp_..., etc.)
+    - ssn                 # Common SSN formats
+    - passport            # Common passport number formats
   action: block           # block | redact | ask | log
   replacement: "[SENSITIVE DATA REDACTED]"
 

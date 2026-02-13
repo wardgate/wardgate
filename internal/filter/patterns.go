@@ -25,7 +25,7 @@ var BuiltinPatterns = map[string]*Pattern{
 		Name:        "api_keys",
 		Description: "Common API key formats (OpenAI, GitHub, Slack, AWS, etc.)",
 		// Matches common API key prefixes with sufficient length
-		Regex: regexp.MustCompile(`(?:` +
+		Regex: regexp.MustCompile(`(?i)(?:` +
 			// OpenAI keys (sk-...)
 			`sk-[a-zA-Z0-9]{20,}` +
 			// GitHub tokens (ghp_, gho_, ghu_, ghs_, ghr_)
@@ -37,6 +37,20 @@ var BuiltinPatterns = map[string]*Pattern{
 			// Generic bearer/api tokens with common prefixes
 			`|(?:bearer|api[_-]?key|api[_-]?token|secret[_-]?key)[:\s]+[a-zA-Z0-9_-]{20,}` +
 			`)`),
+	},
+
+	"ssn": {
+		Name:        "ssn",
+		Description: "Social Security Numbers (US SSN) and Dutch BSN/sofinummer",
+		// Matches 9-digit numbers (with or without dashes in SSN format) preceded by keywords
+		Regex: regexp.MustCompile(`(?i)(?:ssn|social\s+security\s+(?:number|no)|bsn|burgerservicenummer|sofinummer)[:\s]+["']?(\d{3}-\d{2}-\d{4}|\d{9})\b`),
+	},
+
+	"passport": {
+		Name:        "passport",
+		Description: "Passport numbers (US, NL, and other common formats)",
+		// Matches 6-9 character alphanumeric passport numbers preceded by keywords
+		Regex: regexp.MustCompile(`(?i)(?:passport|paspoort|paspoortnummer)(?:\s+(?:number|no|nr))?[:\s]+["']?([A-Z0-9]{6,9})\b`),
 	},
 
 	"credit_cards": {

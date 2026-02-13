@@ -1063,6 +1063,8 @@ filter_defaults:
 | `otp_codes` | One-time passwords and verification codes | "Code: 123456", "Your OTP is 847291" |
 | `verification_links` | Email verification and password reset URLs | `https://example.com/verify/abc`, `?token=xyz` |
 | `api_keys` | Common API key formats | `sk-...`, `ghp_...`, `AKIA...` |
+| `ssn` | Social Security Numbers (US SSN) and Dutch BSN | `SSN: 123-45-6789`, `BSN: 123456789` |
+| `passport` | Passport numbers (US, NL, and other formats) | `Passport: 123456789`, `paspoort: AB1234567` |
 | `credit_cards` | Credit card numbers | `4111-1111-1111-1111` |
 | `passwords` | Passwords in common formats | `password: secret123` |
 | `private_keys` | Private key headers | `-----BEGIN PRIVATE KEY-----` |

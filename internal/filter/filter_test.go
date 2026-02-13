@@ -330,6 +330,11 @@ func TestScanAPIKeys(t *testing.T) {
 			expected: 1,
 		},
 		{
+			name:     "uppercase API_KEY with hex value",
+			input:    "API_KEY: f227d3db5a40ffbd05730d97b3404a8494db2f43d4a3e0a77254053e63202273",
+			expected: 1,
+		},
+		{
 			name:     "no API key",
 			input:    "This is just a normal message",
 			expected: 0,
@@ -348,6 +353,203 @@ func TestScanAPIKeys(t *testing.T) {
 				t.Errorf("expected %d matches, got %d", tt.expected, len(matches))
 				for _, m := range matches {
 					t.Logf("  match: %+v", m)
+				}
+			}
+		})
+	}
+}
+
+func TestScanSSN(t *testing.T) {
+	f, err := New(Config{
+		Enabled:  true,
+		Patterns: []string{"ssn"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected int
+		contains string
+	}{
+		{
+			name:     "SSN with dashes",
+			input:    "SSN: 123-45-6789",
+			expected: 1,
+			contains: "123-45-6789",
+		},
+		{
+			name:     "SSN without dashes",
+			input:    "SSN: 123456789",
+			expected: 1,
+			contains: "123456789",
+		},
+		{
+			name:     "social security number keyword",
+			input:    "social security number: 987-65-4321",
+			expected: 1,
+			contains: "987-65-4321",
+		},
+		{
+			name:     "BSN Dutch keyword",
+			input:    "BSN: 123456789",
+			expected: 1,
+			contains: "123456789",
+		},
+		{
+			name:     "burgerservicenummer keyword",
+			input:    "burgerservicenummer: 111222333",
+			expected: 1,
+			contains: "111222333",
+		},
+		{
+			name:     "BSN quoted value",
+			input:    `BSN: "186786402"`,
+			expected: 1,
+			contains: "186786402",
+		},
+		{
+			name:     "sofi nummer keyword",
+			input:    "sofinummer: 999888777",
+			expected: 1,
+			contains: "999888777",
+		},
+		{
+			name:     "no SSN",
+			input:    "This is a normal message",
+			expected: 0,
+		},
+		{
+			name:     "random 9 digits without context",
+			input:    "Order number 123456789 confirmed",
+			expected: 0,
+		},
+		{
+			name:     "too few digits",
+			input:    "SSN: 12345678",
+			expected: 0,
+		},
+		{
+			name:     "too many digits",
+			input:    "SSN: 1234567890",
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := f.Scan(tt.input)
+			if len(matches) != tt.expected {
+				t.Errorf("expected %d matches, got %d", tt.expected, len(matches))
+				for _, m := range matches {
+					t.Logf("  match: %+v", m)
+				}
+			}
+			if tt.expected > 0 && tt.contains != "" {
+				found := false
+				for _, m := range matches {
+					if m.Value == tt.contains {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected match to contain %q", tt.contains)
+					for _, m := range matches {
+						t.Logf("  match value: %q", m.Value)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestScanPassport(t *testing.T) {
+	f, err := New(Config{
+		Enabled:  true,
+		Patterns: []string{"passport"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected int
+		contains string
+	}{
+		{
+			name:     "US passport 9 digits",
+			input:    "Passport: 123456789",
+			expected: 1,
+			contains: "123456789",
+		},
+		{
+			name:     "NL passport 2 letters 7 digits",
+			input:    "passport number: AB1234567",
+			expected: 1,
+			contains: "AB1234567",
+		},
+		{
+			name:     "passport no keyword",
+			input:    "passport no: XY9876543",
+			expected: 1,
+			contains: "XY9876543",
+		},
+		{
+			name:     "Dutch paspoort keyword",
+			input:    "paspoort: NB1234567",
+			expected: 1,
+			contains: "NB1234567",
+		},
+		{
+			name:     "paspoortnummer keyword",
+			input:    "paspoortnummer: CD7654321",
+			expected: 1,
+			contains: "CD7654321",
+		},
+		{
+			name:     "no passport",
+			input:    "This is a normal message",
+			expected: 0,
+		},
+		{
+			name:     "random alphanumeric without context",
+			input:    "Reference AB1234567 confirmed",
+			expected: 0,
+		},
+		{
+			name:     "too short",
+			input:    "Passport: AB123",
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := f.Scan(tt.input)
+			if len(matches) != tt.expected {
+				t.Errorf("expected %d matches, got %d", tt.expected, len(matches))
+				for _, m := range matches {
+					t.Logf("  match: %+v", m)
+				}
+			}
+			if tt.expected > 0 && tt.contains != "" {
+				found := false
+				for _, m := range matches {
+					if m.Value == tt.contains {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected match to contain %q", tt.contains)
+					for _, m := range matches {
+						t.Logf("  match value: %q", m.Value)
+					}
 				}
 			}
 		})
