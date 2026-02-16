@@ -105,7 +105,7 @@ server: http://wardgate:8080
 key_env: WARDGATE_AGENT_KEY
 ```
 
-Or with the key directly:
+Or with the key directly (static key or JWT token):
 
 ```yaml
 server: http://wardgate:8080

@@ -22,7 +22,7 @@ func TestAgentAuth_ValidToken(t *testing.T) {
 		w.Write([]byte("OK"))
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, handler)
+	middleware := NewAgentAuthMiddleware(agents, nil, handler)
 
 	req := httptest.NewRequest("GET", "/tasks", nil)
 	req.Header.Set("Authorization", "Bearer valid-agent-key")
@@ -47,7 +47,7 @@ func TestAgentAuth_InvalidToken(t *testing.T) {
 		t.Error("handler should not be called for invalid token")
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, handler)
+	middleware := NewAgentAuthMiddleware(agents, nil, handler)
 
 	req := httptest.NewRequest("GET", "/tasks", nil)
 	req.Header.Set("Authorization", "Bearer wrong-key")
@@ -69,7 +69,7 @@ func TestAgentAuth_MissingHeader(t *testing.T) {
 		t.Error("handler should not be called for missing header")
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, handler)
+	middleware := NewAgentAuthMiddleware(agents, nil, handler)
 
 	req := httptest.NewRequest("GET", "/tasks", nil)
 	rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestAgentAuth_MalformedHeader(t *testing.T) {
 		t.Error("handler should not be called for malformed header")
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, handler)
+	middleware := NewAgentAuthMiddleware(agents, nil, handler)
 
 	req := httptest.NewRequest("GET", "/tasks", nil)
 	req.Header.Set("Authorization", "NotBearer some-token")
@@ -118,7 +118,7 @@ func TestAgentAuth_MultipleAgents(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, handler)
+	middleware := NewAgentAuthMiddleware(agents, nil, handler)
 
 	// Test both agents
 	for _, key := range []string{"tessa-key", "bot-key"} {

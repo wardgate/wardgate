@@ -236,6 +236,16 @@ type CapabilityDef struct {
 	Rules       []Rule `yaml:"rules"`
 }
 
+// JWTConfig defines JWT-based agent authentication.
+// When configured, agents can authenticate with a signed JWT instead of a static key.
+// The JWT "sub" claim is used as the agent ID.
+type JWTConfig struct {
+	Secret    string `yaml:"secret,omitempty"`     // HMAC secret (inline, for dev)
+	SecretEnv string `yaml:"secret_env,omitempty"` // Env var holding HMAC secret
+	Issuer    string `yaml:"issuer,omitempty"`     // Expected "iss" claim (optional)
+	Audience  string `yaml:"audience,omitempty"`   // Expected "aud" claim (optional)
+}
+
 // ServerConfig holds server settings.
 type ServerConfig struct {
 	Listen      string        `yaml:"listen"`
@@ -243,6 +253,7 @@ type ServerConfig struct {
 	AdminKeyEnv string        `yaml:"admin_key_env,omitempty"` // Env var for admin key (for web UI/CLI)
 	GrantsFile  string        `yaml:"grants_file,omitempty"`   // Path to grants file (default: grants.json)
 	Logging     LoggingConfig `yaml:"logging,omitempty"`       // Logging dashboard configuration
+	JWT         *JWTConfig    `yaml:"jwt,omitempty"`           // JWT agent authentication (optional)
 }
 
 // LoggingConfig holds logging dashboard settings.

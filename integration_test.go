@@ -68,7 +68,7 @@ func TestIntegration_FullRequestFlow(t *testing.T) {
 		mux.Handle("/"+name+"/", http.StripPrefix("/"+name, handler))
 	}
 
-	handler := auth.NewAgentAuthMiddleware(cfg.Agents, mux)
+	handler := auth.NewAgentAuthMiddleware(cfg.Agents, nil, mux)
 
 	// Test 1: Allowed request with credential injection
 	t.Run("allowed_request", func(t *testing.T) {

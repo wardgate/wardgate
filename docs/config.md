@@ -307,6 +307,48 @@ wardgate agent remove my-agent
 
 `agent add` generates a random 32-byte key, appends the env var to `.env`, adds the agent to `config.yaml`, and prints the key for configuring `wardgate-cli`.
 
+### JWT Agent Authentication
+
+Instead of managing static keys per agent, you can configure JWT-based authentication. This is useful when you have an orchestrator that spins up ephemeral sandboxed agents -- just sign a short-lived JWT with the agent ID and inject it into the sandbox.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `secret` | string | No* | HMAC signing secret (inline, for dev) |
+| `secret_env` | string | No* | Env var holding the HMAC signing secret |
+| `issuer` | string | No | Expected `iss` claim (rejected if mismatch) |
+| `audience` | string | No | Expected `aud` claim (rejected if mismatch) |
+
+\* One of `secret` or `secret_env` is required.
+
+```yaml
+server:
+  listen: ":8080"
+  jwt:
+    secret_env: WARDGATE_JWT_SECRET
+    issuer: "my-orchestrator"   # optional
+    audience: "wardgate"        # optional
+```
+
+The JWT `sub` (subject) claim is used as the **agent ID**. Standard `exp` handles expiry. Supported signing algorithms: HS256, HS384, HS512.
+
+Example JWT payload:
+
+```json
+{
+  "sub": "agent-sandbox-42",
+  "exp": 1739400000,
+  "iss": "my-orchestrator"
+}
+```
+
+**How it works:**
+- Static keys are checked first (fast map lookup)
+- If the token doesn't match any static key and JWT is configured, it's validated as a JWT
+- The agent ID from the `sub` claim is used for all downstream features (policy, rate limiting, audit, scoping)
+- `wardgate-cli` sends `Authorization: Bearer <key>` where the key can be any string including a JWT -- no client changes needed
+
+**No token revocation:** JWT is stateless by design. Use short-lived tokens with `exp` for ephemeral agents. Both static keys and JWT can be used simultaneously.
+
 #### Managing Conclaves via CLI
 
 ```bash

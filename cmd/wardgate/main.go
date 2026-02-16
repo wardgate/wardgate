@@ -271,7 +271,7 @@ func main() {
 	apiMux.Handle("/endpoints", discoveryHandler)
 
 	// Wrap API endpoints with agent authentication
-	authedAPI := auth.NewAgentAuthMiddleware(cfg.Agents, apiMux)
+	authedAPI := auth.NewAgentAuthMiddleware(cfg.Agents, cfg.Server.JWT, apiMux)
 
 	// Create root mux
 	rootMux := http.NewServeMux()

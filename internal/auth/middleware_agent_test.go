@@ -27,7 +27,7 @@ func TestMiddleware_SetsAgentID(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, next)
+	middleware := NewAgentAuthMiddleware(agents, nil, next)
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Bearer secret-key-123")
@@ -61,7 +61,7 @@ func TestMiddleware_DifferentAgents(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, next)
+	middleware := NewAgentAuthMiddleware(agents, nil, next)
 
 	tests := []struct {
 		key        string
@@ -97,7 +97,7 @@ func TestMiddleware_NoAgentID_WhenUnauthorized(t *testing.T) {
 		nextCalled = true
 	})
 
-	middleware := NewAgentAuthMiddleware(agents, next)
+	middleware := NewAgentAuthMiddleware(agents, nil, next)
 
 	// Wrong key
 	req := httptest.NewRequest("GET", "/test", nil)

@@ -24,6 +24,20 @@ filter_defaults:
   action: block           # block | redact | ask | log
   replacement: "[SENSITIVE DATA REDACTED]"
 
+# =============================================================================
+# JWT AGENT AUTHENTICATION (optional)
+# =============================================================================
+# Instead of static keys, agents can authenticate with signed JWTs.
+# The JWT "sub" claim is used as the agent ID. Standard "exp" handles expiry.
+# Both modes coexist -- static keys are checked first, JWT as fallback.
+#
+# server:
+#   jwt:
+#     secret_env: WARDGATE_JWT_SECRET  # env var holding HMAC signing secret
+#     # secret: "inline-secret"        # or inline (for dev only)
+#     # issuer: "my-orchestrator"      # optional: validate "iss" claim
+#     # audience: "wardgate"           # optional: validate "aud" claim
+
 # Agents can be added manually below, or via CLI: wardgate agent add <id>
 agents:
   - id: agent-name
