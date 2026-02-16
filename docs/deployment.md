@@ -67,7 +67,16 @@ server:
 
 ## Deployment Options
 
-### Option 1: Docker Compose (Recommended)
+### Option 1: Homebrew (macOS / Linux)
+
+```bash
+brew tap wardgate/wardgate
+brew install wardgate
+
+./wardgate -config config.yaml -env .env
+```
+
+### Option 2: Docker Compose (Recommended)
 
 Includes Caddy for automatic HTTPS and reverse proxy.
 
@@ -79,7 +88,7 @@ docker compose up -d
 DOMAIN=wardgate.example.com docker compose up -d
 ```
 
-### Option 2: Docker Only
+### Option 3: Docker Only
 
 Run Wardgate without Caddy (bring your own reverse proxy):
 
@@ -94,7 +103,7 @@ docker run -d \
   wardgate
 ```
 
-### Option 3: Standalone Binary
+### Option 4: Standalone Binary
 
 ```bash
 # Build

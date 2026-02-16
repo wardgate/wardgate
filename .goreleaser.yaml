@@ -125,6 +125,40 @@ dockers_v2:
       "org.opencontainers.image.revision": "{{.FullCommit}}"
       "org.opencontainers.image.version": "{{.Version}}"
 
+brews:
+  - ids: [wardgate]
+    repository:
+      owner: wardgate
+      name: homebrew-wardgate
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/wardgate/wardgate"
+    description: "API gateway for AI agents - server"
+    license: "AGPL-3.0"
+    install: |
+      bin.install "wardgate"
+
+  - ids: [wardgate-cli]
+    repository:
+      owner: wardgate
+      name: homebrew-wardgate
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/wardgate/wardgate"
+    description: "API gateway for AI agents - CLI client"
+    license: "AGPL-3.0"
+    install: |
+      bin.install "wardgate-cli"
+
+  - ids: [wardgate-exec]
+    repository:
+      owner: wardgate
+      name: homebrew-wardgate
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/wardgate/wardgate"
+    description: "API gateway for AI agents - conclave executor"
+    license: "AGPL-3.0"
+    install: |
+      bin.install "wardgate-exec"
+
 release:
   github:
     owner: wardgate

@@ -8,6 +8,15 @@ Wardgate has three binaries:
 | `wardgate-cli` | Agent-side tool -- restricted HTTP client and conclave exec; replaces `curl` |
 | `wardgate-exec` | Runs inside each conclave -- connects to Wardgate, executes commands |
 
+## Homebrew (macOS / Linux)
+
+```bash
+brew tap wardgate/wardgate
+brew install wardgate
+brew install wardgate-cli
+brew install wardgate-exec
+```
+
 ## Pre-built Binaries
 
 Download from [GitHub Releases](https://github.com/wardgate/wardgate/releases). Each release includes archives for:
