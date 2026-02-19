@@ -10,7 +10,47 @@ allowed-tools: Bash(wardgate-cli:*)
 
 # wardgate-cli
 
-A restricted HTTP client and remote execution tool. It replaces `curl` for API calls and provides `exec` for running commands on isolated remote environments (conclaves) - all routed through a Wardgate security proxy.
+A restricted HTTP client and remote execution tool. It replaces `curl` for API calls and provides `exec` and `run` for running commands on isolated remote environments (conclaves) - all routed through a Wardgate security proxy.
+
+## Install
+
+Requires the `wardgate-cli` binary with a config path baked in at build time.
+
+### Homebrew
+
+```bash
+brew tap wardgate/wardgate
+brew install wardgate-cli
+```
+
+### Pre-built binaries
+
+Download from [GitHub Releases](https://github.com/wardgate/wardgate/releases) for Linux/macOS/Windows (amd64, arm64).
+
+### Go install
+
+```bash
+go install github.com/wardgate/wardgate/cmd/wardgate-cli@latest
+```
+
+Uses the default config path `/etc/wardgate-cli/config.yaml`. For a custom path, build from source.
+
+### Build from source
+
+```bash
+go build -ldflags "-X main.configPath=/your/path/config.yaml" -o wardgate-cli ./cmd/wardgate-cli
+```
+
+### Config file
+
+Create a config file at the baked-in path:
+
+```yaml
+server: http://wardgate:8080
+key_env: WARDGATE_AGENT_KEY
+```
+
+Or with key inline: `key: "your-agent-key"`. For HTTPS with internal CA, add `ca_file: /path/to/ca.pem`.
 
 ## Key constraints
 
