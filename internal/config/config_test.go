@@ -1183,6 +1183,142 @@ conclaves:
 	}
 }
 
+// ValidateEnv tests - verify key_env references resolve to actual env vars
+
+func TestValidateEnv_AgentKeyEnvMissing(t *testing.T) {
+	os.Unsetenv("WARDGATE_NONEXISTENT_KEY")
+	cfg := &Config{
+		Agents: []AgentConfig{{ID: "test-agent", KeyEnv: "WARDGATE_NONEXISTENT_KEY"}},
+	}
+	err := cfg.ValidateEnv()
+	if err == nil {
+		t.Fatal("expected error for missing agent key_env")
+	}
+	if !strings.Contains(err.Error(), "WARDGATE_NONEXISTENT_KEY") {
+		t.Errorf("error should mention env var name: %v", err)
+	}
+	if !strings.Contains(err.Error(), "test-agent") {
+		t.Errorf("error should mention agent id: %v", err)
+	}
+}
+
+func TestValidateEnv_AgentKeyEnvPresent(t *testing.T) {
+	t.Setenv("TEST_VALIDATE_AGENT_KEY", "secret")
+	cfg := &Config{
+		Agents: []AgentConfig{{ID: "test-agent", KeyEnv: "TEST_VALIDATE_AGENT_KEY"}},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEnv_AgentKeyEnvEmpty(t *testing.T) {
+	t.Setenv("TEST_VALIDATE_AGENT_KEY", "")
+	cfg := &Config{
+		Agents: []AgentConfig{{ID: "test-agent", KeyEnv: "TEST_VALIDATE_AGENT_KEY"}},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("expected no error for empty env var (just warning): %v", err)
+	}
+}
+
+func TestValidateEnv_AgentKeyEnvBlank(t *testing.T) {
+	cfg := &Config{
+		Agents: []AgentConfig{{ID: "test-agent", KeyEnv: ""}},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("expected no error when key_env field is blank: %v", err)
+	}
+}
+
+func TestValidateEnv_ConclaveKeyEnvMissing(t *testing.T) {
+	os.Unsetenv("WARDGATE_NONEXISTENT_CC_KEY")
+	cfg := &Config{
+		Conclaves: map[string]ConclaveConfig{
+			"my-cc": {KeyEnv: "WARDGATE_NONEXISTENT_CC_KEY"},
+		},
+	}
+	err := cfg.ValidateEnv()
+	if err == nil {
+		t.Fatal("expected error for missing conclave key_env")
+	}
+	if !strings.Contains(err.Error(), "WARDGATE_NONEXISTENT_CC_KEY") {
+		t.Errorf("error should mention env var name: %v", err)
+	}
+}
+
+func TestValidateEnv_ConclaveKeyEnvPresent(t *testing.T) {
+	t.Setenv("TEST_VALIDATE_CC_KEY", "secret")
+	cfg := &Config{
+		Conclaves: map[string]ConclaveConfig{
+			"my-cc": {KeyEnv: "TEST_VALIDATE_CC_KEY"},
+		},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEnv_ConclaveKeyEnvEmpty(t *testing.T) {
+	t.Setenv("TEST_VALIDATE_CC_KEY", "")
+	cfg := &Config{
+		Conclaves: map[string]ConclaveConfig{
+			"my-cc": {KeyEnv: "TEST_VALIDATE_CC_KEY"},
+		},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("expected no error for empty env var (just warning): %v", err)
+	}
+}
+
+func TestValidateEnv_AdminKeyEnvMissing(t *testing.T) {
+	os.Unsetenv("WARDGATE_NONEXISTENT_ADMIN_KEY")
+	cfg := &Config{
+		Server: ServerConfig{AdminKeyEnv: "WARDGATE_NONEXISTENT_ADMIN_KEY"},
+	}
+	err := cfg.ValidateEnv()
+	if err == nil {
+		t.Fatal("expected error for missing admin_key_env")
+	}
+	if !strings.Contains(err.Error(), "WARDGATE_NONEXISTENT_ADMIN_KEY") {
+		t.Errorf("error should mention env var name: %v", err)
+	}
+}
+
+func TestValidateEnv_AdminKeyEnvNotConfigured(t *testing.T) {
+	cfg := &Config{
+		Server: ServerConfig{AdminKeyEnv: ""},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("expected no error when admin_key_env not configured: %v", err)
+	}
+}
+
+func TestValidateEnv_NoKeyEnvRefs(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEnv_MultipleAgentsMixedPresence(t *testing.T) {
+	t.Setenv("AGENT_A_KEY", "secret-a")
+	os.Unsetenv("AGENT_B_KEY")
+	cfg := &Config{
+		Agents: []AgentConfig{
+			{ID: "agent-a", KeyEnv: "AGENT_A_KEY"},
+			{ID: "agent-b", KeyEnv: "AGENT_B_KEY"},
+		},
+	}
+	err := cfg.ValidateEnv()
+	if err == nil {
+		t.Fatal("expected error for missing agent-b key_env")
+	}
+	if !strings.Contains(err.Error(), "agent-b") {
+		t.Errorf("error should mention agent-b: %v", err)
+	}
+}
+
 func TestLoadConfig_ConclaveCommandMissingPlaceholder(t *testing.T) {
 	os.Setenv("TEST_CC_KEY", "test")
 	t.Cleanup(func() { os.Unsetenv("TEST_CC_KEY") })

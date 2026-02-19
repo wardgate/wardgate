@@ -113,6 +113,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	if err := cfg.ValidateEnv(); err != nil {
+		log.Fatalf("Config environment check failed: %v", err)
+	}
+
 	// Setup components
 	vault := auth.NewEnvVault()
 	auditLog := audit.New(os.Stdout)

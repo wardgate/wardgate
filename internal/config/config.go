@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -620,5 +621,48 @@ func (c *Config) validate() error {
 			}
 		}
 	}
+	return nil
+}
+
+// ValidateEnv checks that all environment variables referenced by key_env
+// fields are actually set in the process environment. Returns an error if
+// any are missing; logs a warning if set but empty.
+func (c *Config) ValidateEnv() error {
+	for _, agent := range c.Agents {
+		if agent.KeyEnv == "" {
+			continue
+		}
+		val, ok := os.LookupEnv(agent.KeyEnv)
+		if !ok {
+			return fmt.Errorf("agent %q: environment variable %s not set (referenced by key_env)", agent.ID, agent.KeyEnv)
+		}
+		if val == "" {
+			log.Printf("Warning: agent %q: environment variable %s is set but empty", agent.ID, agent.KeyEnv)
+		}
+	}
+
+	for name, cc := range c.Conclaves {
+		if cc.KeyEnv == "" {
+			continue
+		}
+		val, ok := os.LookupEnv(cc.KeyEnv)
+		if !ok {
+			return fmt.Errorf("conclave %q: environment variable %s not set (referenced by key_env)", name, cc.KeyEnv)
+		}
+		if val == "" {
+			log.Printf("Warning: conclave %q: environment variable %s is set but empty", name, cc.KeyEnv)
+		}
+	}
+
+	if c.Server.AdminKeyEnv != "" {
+		val, ok := os.LookupEnv(c.Server.AdminKeyEnv)
+		if !ok {
+			return fmt.Errorf("server: environment variable %s not set (referenced by admin_key_env)", c.Server.AdminKeyEnv)
+		}
+		if val == "" {
+			log.Printf("Warning: server: environment variable %s is set but empty", c.Server.AdminKeyEnv)
+		}
+	}
+
 	return nil
 }
