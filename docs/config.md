@@ -61,12 +61,38 @@ endpoints:
     upstream: https://my-proxy.example.com/todoist  # Custom upstream
     auth:
       credential_env: MY_TODOIST_KEY
-    rules:  # Custom rules override preset defaults
+    rules:  # Custom rules replace capabilities entirely when no capabilities are set
       - match: { method: GET }
         action: allow
       - match: { method: "*" }
         action: deny
 ```
+
+### Combining Capabilities with Custom Rules
+
+When both `capabilities` and `rules` are specified, your custom rules are evaluated **first** (first-match-wins), followed by the capability-expanded rules. This lets you use capabilities for broad defaults and add surgical overrides via rules:
+
+```yaml
+endpoints:
+  mail:
+    preset: imap
+    upstream: imap://protonmail-bridge:143
+    auth:
+      type: plain
+      credential_env: WARDGATE_CRED_IMAP
+    capabilities:
+      list_folders: allow
+    rules:
+      # Allow reading only one specific folder (evaluated before capabilities)
+      - match: { method: GET, path: "/folders/Folders/Agent John*" }
+        action: allow
+```
+
+Evaluation order:
+
+1. User-defined `rules` (highest priority, first-match-wins)
+2. Rules expanded from `capabilities`
+3. Catch-all deny (automatically appended)
 
 ## Custom Presets (User-Defined)
 

@@ -569,6 +569,64 @@ endpoints:
 	}
 }
 
+func TestLoadConfig_PresetCapabilitiesComposeWithRules(t *testing.T) {
+	// User-defined rules should be prepended before capability-expanded rules.
+	// First-match-wins means user rules act as overrides.
+	yaml := `
+presets_dir: ../../presets
+endpoints:
+  github:
+    preset: github
+    auth:
+      credential_env: GITHUB_TOKEN
+    capabilities:
+      read_data: allow
+      create_issues: allow
+    rules:
+      - match: { method: GET, path: "/repos/*/*/secret-stuff" }
+        action: deny
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["github"]
+	if len(ep.Rules) < 3 {
+		t.Fatalf("expected at least 3 rules (1 user + capability rules + catch-all), got %d", len(ep.Rules))
+	}
+
+	// First rule should be the user-defined deny rule
+	first := ep.Rules[0]
+	if first.Match.Path != "/repos/*/*/secret-stuff" || first.Action != "deny" {
+		t.Errorf("expected first rule to be the user-defined deny, got path=%q action=%q", first.Match.Path, first.Action)
+	}
+
+	// Last rule should be the catch-all deny from expandCapabilities
+	last := ep.Rules[len(ep.Rules)-1]
+	if last.Match.Method != "*" || last.Action != "deny" {
+		t.Errorf("expected last rule to be catch-all deny, got method=%q action=%q", last.Match.Method, last.Action)
+	}
+
+	// Capability rules should be present in between
+	foundGetAllow := false
+	foundIssueAllow := false
+	for _, rule := range ep.Rules[1:] {
+		if rule.Match.Method == "GET" && rule.Action == "allow" {
+			foundGetAllow = true
+		}
+		if rule.Match.Path == "/repos/*/*/issues" && rule.Match.Method == "POST" && rule.Action == "allow" {
+			foundIssueAllow = true
+		}
+	}
+	if !foundGetAllow {
+		t.Error("expected read_data capability rules after user rules")
+	}
+	if !foundIssueAllow {
+		t.Error("expected create_issues capability rules after user rules")
+	}
+}
+
 // Custom preset tests - user-defined presets
 
 func TestLoadConfig_InlineCustomPreset(t *testing.T) {

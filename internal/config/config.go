@@ -467,13 +467,14 @@ func (c *Config) applyPresets() error {
 			ep.Adapter = preset.Adapter
 		}
 
-		// If capabilities are specified, expand them into rules
+		// If capabilities are specified, expand them into rules.
+		// User-defined rules are prepended (first-match-wins gives them priority).
 		if len(ep.Capabilities) > 0 {
-			rules, err := expandCapabilities(name, preset, ep.Capabilities)
+			capRules, err := expandCapabilities(name, preset, ep.Capabilities)
 			if err != nil {
 				return err
 			}
-			ep.Rules = rules
+			ep.Rules = append(ep.Rules, capRules...)
 		} else if len(ep.Rules) == 0 {
 			// No capabilities and no custom rules - default to deny all
 			ep.Rules = []Rule{{
