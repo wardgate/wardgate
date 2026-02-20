@@ -37,6 +37,7 @@ endpoints:
 | [postmark](#postmark) | Postmark Email API | `https://api.postmarkapp.com` |
 | [sentry](#sentry) | Sentry Error Tracking | `https://sentry.io/api/0` |
 | [smtp](#smtp) | SMTP Email Sending | (configure your server) |
+| [ssh](#ssh) | SSH Remote Server Access | (configure your server) |
 | [todoist](#todoist) | Todoist Task Management | `https://api.todoist.com/rest/v2` |
 
 You are encouraged to share your own presets with the community by adding them to the `presets/` directory via a Pull Request.
@@ -350,6 +351,37 @@ endpoints:
 **Credentials:** Format is `username:password` (use app passwords for Gmail)
 
 **Note:** For additional SMTP features like recipient allowlists and content filtering, add the `smtp:` configuration block. See the [SMTP configuration](config.md#smtp-endpoints) for details.
+
+---
+
+## ssh
+
+**SSH Remote Server Access**
+
+Use this preset for executing commands on remote servers via SSH. Wardgate connects directly to the host - no agent software needed on the target.
+
+| Capability | Description |
+|------------|-------------|
+| `exec_commands` | Execute commands on the remote host |
+
+**Example:**
+```yaml
+endpoints:
+  prod-server:
+    preset: ssh
+    ssh:
+      host: prod.example.com
+      username: deploy
+      known_host: "prod.example.com ssh-ed25519 AAAAC3..."
+    auth:
+      credential_env: WARDGATE_SSH_KEY_PROD
+    capabilities:
+      exec_commands: ask
+```
+
+**Credentials:** The environment variable must contain a PEM-encoded SSH private key.
+
+**Note:** Host key verification is required. See the [SSH configuration](config.md#ssh-endpoints) for details on `known_host`, `known_hosts_file`, and other options.
 
 ---
 

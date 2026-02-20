@@ -11,9 +11,9 @@
 
 # Wardgate - AI Agent Security Gateway
 
-*Wardgate* is a security gateway that sits between AI agents and the outside world -- isolating credentials for API calls and gating command execution in remote environments (conclaves).
+*Wardgate* is a security gateway that sits between AI agents and the outside world -- isolating credentials for API calls, isolating SSH keys for remote command execution, and gating command execution in remote environments (conclaves).
 
-Give your AI agents access to APIs and shell tools -- without giving them your credentials or trusting them with direct execution.
+Give your AI agents access to APIs, SSH keys, and shell tools - without giving them your credentials or trusting them with direct execution.
 
 ## The Problem
 
@@ -35,7 +35,7 @@ They are also like a whizzkid-teenager. They know a lot, but they have a mind of
 
 Wardgate provides two complementary security layers:
 
-**API Gateway** -- Agents talk to Wardgate. Wardgate talks to APIs. Your credentials never leave Wardgate.
+**API Gateway** -- Agents talk to Wardgate. Wardgate talks to APIs, SSH, IMAP or SMTP servers. Your credentials never leave Wardgate.
 
 **Conclaves** -- Isolated remote execution environments. Agents send commands through Wardgate, which evaluates policy before forwarding to an isolated container. The agent host has no direct access to conclave data or binaries.
 
@@ -47,8 +47,8 @@ flowchart LR
     end
 
     subgraph conclaveFlow [Conclaves]
-        Agent2[AI Agent] -->|wardgate-cli exec| WG2[Wardgate]
-        WG2 -->|"policy checked"| Exec[wardgate-exec]
+        Agent2[AI Agent] -->|wardgate-cli exec| WG3[Wardgate]
+        WG3 -->|"policy checked"| Exec[wardgate-exec]
     end
 ```
 
@@ -59,7 +59,7 @@ flowchart LR
 - **Credential Isolation** -- Agents never see your API keys, OAuth tokens, or passwords
 - **Access Control** -- Define what each agent can do: read-only calendar, no email deletion, ask before sending
 - **Presets** -- Pre-configured settings for popular APIs (Todoist, GitHub, Cloudflare, Google Calendar, Postmark, Sentry, IMAP, SMTP, and more)
-- **Protocol Adapters** -- HTTP/REST passthrough, IMAP and SMTP with REST wrappers
+- **Protocol Adapters** -- HTTP/REST passthrough, SSH, IMAP and SMTP with REST wrappers
 - **Sensitive Data Filtering** -- Automatically block or redact OTP codes, verification links, and API keys in responses
 
 ### Conclaves (Remote Execution)
@@ -93,7 +93,7 @@ Wardgate lets you get the benefits of AI automation while keeping a security bou
 
 ## Quick Examples
 
-### API Gateway
+### API Gateway (HTTPS)
 
 Instead of giving your agent a Todoist API key, configure Wardgate with a [preset](docs/presets.md):
 
@@ -111,6 +111,24 @@ endpoints:
 ```
 
 Your agent calls `https://wardgate.internal/todoist/tasks` -- Wardgate injects the real credentials and enforces your rules.
+
+### API Gateway (SSH)
+
+Instead of giving your agent a SSH key, configure Wardgate with a [preset](docs/presets.md):
+
+```yaml
+endpoints:
+  ssh:
+    preset: ssh
+    ssh:
+      host: prod.example.com
+      username: deploy
+      known_host: "prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+    auth:
+      credential_env: WARDGATE_SSH_KEY_PROD
+    capabilities:
+      exec_commands: ask  # Require approval for every command
+```
 
 ### Conclave
 

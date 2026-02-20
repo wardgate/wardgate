@@ -27,6 +27,7 @@ import (
 	"github.com/wardgate/wardgate/internal/policy"
 	"github.com/wardgate/wardgate/internal/proxy"
 	"github.com/wardgate/wardgate/internal/smtp"
+	sshpkg "github.com/wardgate/wardgate/internal/ssh"
 )
 
 // Set by goreleaser ldflags
@@ -231,6 +232,26 @@ func main() {
 			}
 			h = auditMiddleware(auditLog, name, smtpHandler)
 			log.Printf("Registered SMTP endpoint: /%s/ -> %s:%d", name, smtpConnCfg.Host, smtpConnCfg.Port)
+
+		case "ssh":
+			sshConnCfg, err := parseSSHConfig(endpoint, vault)
+			if err != nil {
+				log.Fatalf("Failed to parse SSH config for %s: %v", name, err)
+			}
+
+			sshPool := sshpkg.NewPoolWithDialer(&sshDialerAdapter{}, sshpkg.PoolConfig{
+				MaxConnsPerEndpoint: sshConnCfg.MaxSessions,
+				IdleTimeout:         5 * time.Minute,
+			})
+			sshHandler := sshpkg.NewHandler(sshPool, engine, sshpkg.HandlerConfig{
+				EndpointName:     name,
+				ConnectionConfig: sshConnCfg,
+			})
+			if approvalMgr != nil {
+				sshHandler.SetApprovalManager(approvalMgr)
+			}
+			h = auditMiddleware(auditLog, name, sshHandler)
+			log.Printf("Registered SSH endpoint: /%s/ -> %s:%d", name, sshConnCfg.Host, sshConnCfg.Port)
 
 		case "exec":
 			execHandler := execpkg.NewHandler(engine, name)
@@ -526,6 +547,55 @@ func parseSMTPUpstream(endpoint config.Endpoint, vault auth.Vault) (smtp.Connect
 		InsecureSkipVerify: insecureSkipVerify,
 		From:               from,
 	}, nil
+}
+
+// parseSSHConfig builds an SSH ConnectionConfig from endpoint settings.
+func parseSSHConfig(endpoint config.Endpoint, vault auth.Vault) (sshpkg.ConnectionConfig, error) {
+	if endpoint.SSH == nil {
+		return sshpkg.ConnectionConfig{}, fmt.Errorf("ssh config is required for ssh adapter")
+	}
+
+	cfg := endpoint.SSH
+
+	port := cfg.Port
+	if port == 0 {
+		port = 22
+	}
+
+	maxSessions := cfg.MaxSessions
+	if maxSessions == 0 {
+		maxSessions = 5
+	}
+
+	timeoutSecs := cfg.TimeoutSecs
+	if timeoutSecs == 0 {
+		timeoutSecs = 30
+	}
+
+	// Get SSH private key from vault
+	key, err := vault.Get(endpoint.Auth.CredentialEnv)
+	if err != nil {
+		return sshpkg.ConnectionConfig{}, fmt.Errorf("getting SSH key: %w", err)
+	}
+
+	return sshpkg.ConnectionConfig{
+		Host:               cfg.Host,
+		Port:               port,
+		Username:           cfg.Username,
+		PrivateKey:         []byte(key),
+		KnownHost:          cfg.KnownHost,
+		KnownHostsFile:     cfg.KnownHostsFile,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		MaxSessions:        maxSessions,
+		TimeoutSecs:        timeoutSecs,
+	}, nil
+}
+
+// sshDialerAdapter adapts the SSH client constructor to the Dialer interface.
+type sshDialerAdapter struct{}
+
+func (d *sshDialerAdapter) Dial(cfg sshpkg.ConnectionConfig) (sshpkg.Client, error) {
+	return sshpkg.NewSSHClient(cfg)
 }
 
 func runAgentCmd(args []string) {

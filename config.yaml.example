@@ -332,3 +332,19 @@ endpoints:
   #   #   known_recipients:
   #   #     - "@company.com"
   #   #   ask_new_recipients: true
+
+  # ---------------------------------------------------------------------------
+  # SSH (remote execution) - using preset
+  # ---------------------------------------------------------------------------
+
+  # prod-server:
+  #   preset: ssh
+  #   ssh:
+  #     host: prod.example.com
+  #     port: 22
+  #     username: deploy
+  #     known_host: "prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+  #   auth:
+  #     credential_env: WARDGATE_SSH_KEY_PROD
+  #   capabilities:
+  #     exec_commands: ask  # require human approval for every command

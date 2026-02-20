@@ -393,7 +393,7 @@ Map of endpoint names to their configuration.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `adapter` | string | No | Adapter type: `http` (default), `imap`, or `smtp` |
+| `adapter` | string | No | Adapter type: `http` (default), `imap`, `smtp`, or `ssh` |
 | `agents` | array | No | Agent IDs allowed to access this endpoint (empty = all agents) |
 | `upstream` | string | Yes | URL of the upstream service |
 | `docs_url` | string | No | Link to API documentation (exposed in discovery, overrides preset) |
@@ -401,6 +401,7 @@ Map of endpoint names to their configuration.
 | `rules` | array | No | Policy rules (default: deny all) |
 | `imap` | object | No | IMAP-specific settings (for `adapter: imap`) |
 | `smtp` | object | No | SMTP-specific settings (for `adapter: smtp`) |
+| `ssh` | object | No | SSH-specific settings (for `adapter: ssh`) |
 
 ```yaml
 endpoints:
@@ -1063,6 +1064,100 @@ smtp:
 
 Keywords are case-insensitive. Any match will reject the email with HTTP 403.
 
+## SSH Endpoints
+
+For SSH endpoints, Wardgate exposes a REST API that executes commands on a remote host via SSH. This is similar to conclaves but without requiring `wardgate-exec` on the target host - Wardgate connects directly via SSH.
+
+### REST API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/exec` | Execute a command |
+
+**POST /exec**
+
+```json
+{
+  "command": "systemctl status nginx",
+  "cwd": "/opt/app",
+  "timeout": 30
+}
+```
+
+Response:
+
+```json
+{
+  "stdout": "...",
+  "stderr": "...",
+  "exit_code": 0
+}
+```
+
+### SSH Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `host` | string | (required) | SSH server hostname |
+| `port` | int | 22 | SSH server port |
+| `username` | string | (required) | SSH username |
+| `known_host` | string | - | Inline known_hosts entry for host key verification |
+| `known_hosts_file` | string | - | Path to known_hosts file |
+| `insecure_skip_verify` | bool | false | Skip host key verification (not recommended) |
+| `max_sessions` | int | 5 | Maximum concurrent SSH sessions |
+| `timeout_secs` | int | 30 | Per-command timeout in seconds |
+
+### Authentication
+
+The `auth.credential_env` environment variable must contain the PEM-encoded SSH private key. Use escaped newlines in `.env` files:
+
+```
+WARDGATE_SSH_KEY_PROD="-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbn...\n-----END OPENSSH PRIVATE KEY-----"
+```
+
+### Example
+
+```yaml
+endpoints:
+  prod-server:
+    adapter: ssh
+    description: "Production server access"
+    ssh:
+      host: prod.example.com
+      port: 22
+      username: deploy
+      known_host: "prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+    auth:
+      type: ssh-key
+      credential_env: WARDGATE_SSH_KEY_PROD
+    capabilities:
+      exec_commands: allow
+```
+
+Using the preset:
+
+```yaml
+endpoints:
+  prod-server:
+    preset: ssh
+    ssh:
+      host: prod.example.com
+      username: deploy
+      known_host: "prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+    auth:
+      credential_env: WARDGATE_SSH_KEY_PROD
+    capabilities:
+      exec_commands: ask  # Require approval for every command
+```
+
+### Host Key Verification
+
+Host key verification is required by default. You must provide one of:
+
+- `known_host`: inline known_hosts entry (e.g., from `ssh-keyscan prod.example.com`)
+- `known_hosts_file`: path to a known_hosts file
+- `insecure_skip_verify: true`: disable verification (logs a warning, not recommended for production)
+
 ## Sensitive Data Filtering
 
 Wardgate can automatically detect and filter sensitive data in API responses and email messages. This prevents agents from seeing OTP codes, verification links, API keys, and other security-sensitive information.
@@ -1170,6 +1265,7 @@ endpoints:
 | HTTP | Response bodies (JSON, text, XML) | `block` |
 | IMAP | Message subject and body | `block` |
 | SMTP | Outgoing email subject/body (triggers `ask`) | `ask` |
+| SSH | Command stdout/stderr | `block` |
 | Conclave | Command stdout/stderr | `block` |
 
 For SMTP, detecting sensitive data triggers the approval workflow rather than blocking, so humans can review before sending.

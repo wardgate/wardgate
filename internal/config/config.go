@@ -301,6 +301,7 @@ type Endpoint struct {
 	Rules        []Rule            `yaml:"rules,omitempty"`
 	IMAP         *IMAPConfig       `yaml:"imap,omitempty"`   // IMAP-specific settings
 	SMTP         *SMTPConfig       `yaml:"smtp,omitempty"`   // SMTP-specific settings
+	SSH          *SSHConfig        `yaml:"ssh,omitempty"`    // SSH-specific settings
 	Filter       *FilterConfig     `yaml:"filter,omitempty"` // Sensitive data filtering settings
 }
 
@@ -326,6 +327,18 @@ type IMAPConfig struct {
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify,omitempty"` // Skip TLS cert verification (for ProtonBridge)
 	MaxConns           int  `yaml:"max_conns,omitempty"`            // Max connections per endpoint
 	IdleTimeoutSecs    int  `yaml:"idle_timeout_secs,omitempty"`    // Idle connection timeout
+}
+
+// SSHConfig holds SSH-specific settings.
+type SSHConfig struct {
+	Host               string `yaml:"host"`
+	Port               int    `yaml:"port,omitempty"`
+	Username           string `yaml:"username"`
+	KnownHost          string `yaml:"known_host,omitempty"`
+	KnownHostsFile     string `yaml:"known_hosts_file,omitempty"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify,omitempty"`
+	MaxSessions        int    `yaml:"max_sessions,omitempty"`
+	TimeoutSecs        int    `yaml:"timeout_secs,omitempty"`
 }
 
 // SMTPConfig holds SMTP-specific settings.
@@ -602,6 +615,32 @@ func (c *Config) validate() error {
 		adapter := strings.ToLower(ep.Adapter)
 		if adapter == "exec" {
 			// Exec endpoints don't need upstream or auth
+			for i, rule := range ep.Rules {
+				if rule.Action == "" {
+					continue
+				}
+				if !validActions[rule.Action] {
+					return fmt.Errorf("endpoint %q rule %d: invalid action %q", name, i, rule.Action)
+				}
+			}
+			continue
+		}
+		if adapter == "ssh" {
+			if ep.SSH == nil {
+				return fmt.Errorf("endpoint %q: ssh adapter requires ssh configuration", name)
+			}
+			if ep.SSH.Host == "" {
+				return fmt.Errorf("endpoint %q: ssh.host is required", name)
+			}
+			if ep.SSH.Username == "" {
+				return fmt.Errorf("endpoint %q: ssh.username is required", name)
+			}
+			if ep.Auth.CredentialEnv == "" {
+				return fmt.Errorf("endpoint %q: auth.credential_env is required for ssh adapter", name)
+			}
+			if !ep.SSH.InsecureSkipVerify && ep.SSH.KnownHost == "" && ep.SSH.KnownHostsFile == "" {
+				return fmt.Errorf("endpoint %q: ssh host key verification required (set known_host, known_hosts_file, or insecure_skip_verify)", name)
+			}
 			for i, rule := range ep.Rules {
 				if rule.Action == "" {
 					continue

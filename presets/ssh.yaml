@@ -1,0 +1,10 @@
+name: ssh
+description: "SSH remote server access"
+adapter: ssh
+auth_type: ssh-key
+
+capabilities:
+  - name: exec_commands
+    description: "Execute commands on the remote host"
+    rules:
+      - match: { method: POST, path: "/exec" }
