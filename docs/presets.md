@@ -28,6 +28,7 @@ endpoints:
 | Preset | Service | Upstream URL |
 |--------|---------|--------------|
 | [cloudflare](#cloudflare) | Cloudflare API v4 | `https://api.cloudflare.com/client/v4` |
+| [gitea](#gitea) | Gitea Self-Hosted Git Forge | (configure your server) |
 | [github](#github) | GitHub REST API | `https://api.github.com` |
 | [google-calendar](#google-calendar) | Google Calendar API v3 | `https://www.googleapis.com/calendar/v3` |
 | [imap](#imap) | IMAP Email Reading | (configure your server) |
@@ -67,6 +68,51 @@ endpoints:
 ```
 
 **Get your token:** [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+
+---
+
+## gitea
+
+**Gitea Self-Hosted Git Forge API**
+
+Use this preset for Gitea instances. You must set your own `upstream` URL pointing to your instance's API (e.g. `https://gitea.example.com/api/v1`).
+
+| Capability | Description |
+|------------|-------------|
+| `read_data` | Read repositories, issues, pull requests, users, and other data |
+| `create_issues` | Create new issues in repositories |
+| `update_issues` | Edit existing issues |
+| `create_comments` | Add comments to issues and pull requests |
+| `manage_labels` | Add and remove labels on issues |
+| `create_pull_requests` | Create new pull requests |
+| `update_pull_requests` | Edit existing pull requests |
+| `merge_pull_requests` | Merge pull requests |
+| `manage_reviews` | Create, submit, and dismiss pull request reviews |
+| `manage_releases` | Create, update, and delete releases |
+| `manage_files` | Create, update, and delete files in repositories |
+| `manage_branches` | Create and delete branches |
+| `manage_repos` | Create, edit, and delete repositories |
+| `manage_milestones` | Create, update, and delete milestones |
+| `manage_webhooks` | Create, update, and delete repository webhooks |
+| `manage_organizations` | Create and edit organizations, manage teams and members |
+
+**Example:**
+```yaml
+endpoints:
+  gitea:
+    preset: gitea
+    upstream: https://gitea.example.com/api/v1
+    auth:
+      credential_env: WARDGATE_CRED_GITEA_TOKEN
+    capabilities:
+      read_data: allow
+      create_issues: allow
+      create_comments: allow
+      create_pull_requests: ask
+      merge_pull_requests: ask
+```
+
+**Get your token:** In your Gitea instance, go to Settings > Applications > Generate New Token
 
 ---
 

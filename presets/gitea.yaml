@@ -1,0 +1,105 @@
+name: gitea
+description: "Gitea self-hosted Git forge API"
+docs_url: https://docs.gitea.com/api/
+auth_type: bearer
+
+capabilities:
+  - name: read_data
+    description: "Read repositories, issues, pull requests, users, and other data"
+    rules:
+      - match: { method: GET }
+
+  - name: create_issues
+    description: "Create new issues in repositories"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/issues" }
+
+  - name: update_issues
+    description: "Edit existing issues"
+    rules:
+      - match: { method: PATCH, path: "/repos/*/*/issues/*" }
+
+  - name: create_comments
+    description: "Add comments to issues and pull requests"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/issues/*/comments" }
+
+  - name: manage_labels
+    description: "Add and remove labels on issues"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/issues/*/labels" }
+      - match: { method: DELETE, path: "/repos/*/*/issues/*/labels/*" }
+
+  - name: create_pull_requests
+    description: "Create new pull requests"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/pulls" }
+
+  - name: update_pull_requests
+    description: "Edit existing pull requests"
+    rules:
+      - match: { method: PATCH, path: "/repos/*/*/pulls/*" }
+
+  - name: merge_pull_requests
+    description: "Merge pull requests"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/pulls/*/merge" }
+
+  - name: manage_reviews
+    description: "Create, submit, and dismiss pull request reviews"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/pulls/*/reviews" }
+      - match: { method: POST, path: "/repos/*/*/pulls/*/reviews/*/dismissals" }
+      - match: { method: POST, path: "/repos/*/*/pulls/*/reviews/*/undismissals" }
+
+  - name: manage_releases
+    description: "Create, update, and delete releases"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/releases" }
+      - match: { method: PATCH, path: "/repos/*/*/releases/*" }
+      - match: { method: DELETE, path: "/repos/*/*/releases/*" }
+
+  - name: manage_files
+    description: "Create, update, and delete files in repositories"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/contents/*" }
+      - match: { method: PUT, path: "/repos/*/*/contents/*" }
+      - match: { method: DELETE, path: "/repos/*/*/contents/*" }
+
+  - name: manage_branches
+    description: "Create and delete branches"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/branches" }
+      - match: { method: DELETE, path: "/repos/*/*/branches/*" }
+
+  - name: manage_repos
+    description: "Create, edit, and delete repositories"
+    rules:
+      - match: { method: POST, path: "/user/repos" }
+      - match: { method: POST, path: "/orgs/*/repos" }
+      - match: { method: PATCH, path: "/repos/*/*" }
+      - match: { method: DELETE, path: "/repos/*/*" }
+
+  - name: manage_milestones
+    description: "Create, update, and delete milestones"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/milestones" }
+      - match: { method: PATCH, path: "/repos/*/*/milestones/*" }
+      - match: { method: DELETE, path: "/repos/*/*/milestones/*" }
+
+  - name: manage_webhooks
+    description: "Create, update, and delete repository webhooks"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/hooks" }
+      - match: { method: PATCH, path: "/repos/*/*/hooks/*" }
+      - match: { method: DELETE, path: "/repos/*/*/hooks/*" }
+
+  - name: manage_organizations
+    description: "Create and edit organizations, manage teams and members"
+    rules:
+      - match: { method: POST, path: "/orgs" }
+      - match: { method: PATCH, path: "/orgs/*" }
+      - match: { method: POST, path: "/orgs/*/teams" }
+      - match: { method: PATCH, path: "/teams/*" }
+      - match: { method: PUT, path: "/teams/*/members/*" }
+      - match: { method: DELETE, path: "/teams/*/members/*" }
