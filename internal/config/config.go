@@ -228,6 +228,7 @@ type CustomPresetDef struct {
 	AuthType     string          `yaml:"auth_type"`
 	Adapter      string          `yaml:"adapter,omitempty"` // "imap", "smtp", or empty for http
 	Capabilities []CapabilityDef `yaml:"capabilities,omitempty"`
+	DefaultRules []Rule          `yaml:"default_rules,omitempty"` // Fallback rules when no capabilities are specified
 }
 
 // CapabilityDef defines a capability in a custom preset.
