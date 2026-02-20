@@ -399,6 +399,7 @@ func LoadFromFile(path string) (*Config, error) {
 func LoadFromReader(r io.Reader) (*Config, error) {
 	var cfg Config
 	decoder := yaml.NewDecoder(r)
+	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
@@ -594,6 +595,9 @@ func (c *Config) validate() error {
 	}
 
 	for name, ep := range c.Endpoints {
+		if len(ep.Capabilities) > 0 && ep.Preset == "" {
+			return fmt.Errorf("endpoint %q: capabilities require a preset", name)
+		}
 		adapter := strings.ToLower(ep.Adapter)
 		if adapter == "exec" {
 			// Exec endpoints don't need upstream or auth

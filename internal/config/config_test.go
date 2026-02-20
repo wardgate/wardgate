@@ -1399,3 +1399,44 @@ conclaves:
 		t.Errorf("error should mention missing placeholder: %v", err)
 	}
 }
+
+func TestLoadConfig_UnknownKeyError(t *testing.T) {
+	// "presets" is not a valid key (should be "preset")
+	yaml := `
+presets_dir: ../../presets
+endpoints:
+  github:
+    presets: github
+    upstream: https://api.github.com
+    auth:
+      type: bearer
+      credential_env: GITHUB_TOKEN
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for unknown key 'presets'")
+	}
+}
+
+func TestLoadConfig_CapabilitiesWithoutPreset(t *testing.T) {
+	yaml := `
+endpoints:
+  custom:
+    upstream: https://example.com/api
+    auth:
+      type: bearer
+      credential_env: MY_TOKEN
+    capabilities:
+      read_data: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for capabilities without preset")
+	}
+	if !strings.Contains(err.Error(), "capabilities") {
+		t.Errorf("error should mention capabilities: %v", err)
+	}
+}
