@@ -464,10 +464,10 @@ endpoints:
 		if rule.Match.Method == "GET" && rule.Action == "allow" {
 			foundGetAllow = true
 		}
-		if rule.Match.Path == "/repos/*/issues" && rule.Match.Method == "POST" && rule.Action == "allow" {
+		if rule.Match.Path == "/repos/*/*/issues" && rule.Match.Method == "POST" && rule.Action == "allow" {
 			foundIssueAllow = true
 		}
-		if rule.Match.Path == "/repos/*/issues/*/comments" && rule.Match.Method == "POST" && rule.Action == "deny" {
+		if rule.Match.Path == "/repos/*/*/issues/*/comments" && rule.Match.Method == "POST" && rule.Action == "deny" {
 			foundCommentDeny = true
 		}
 	}

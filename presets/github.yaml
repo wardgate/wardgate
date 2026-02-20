@@ -13,27 +13,84 @@ capabilities:
   - name: create_issues
     description: "Create new issues in repositories"
     rules:
-      - match: { method: POST, path: "/repos/*/issues" }
+      - match: { method: POST, path: "/repos/*/*/issues" }
+
+  - name: update_issues
+    description: "Edit existing issues (title, body, state, assignees, milestone)"
+    rules:
+      - match: { method: PATCH, path: "/repos/*/*/issues/*" }
 
   - name: create_comments
     description: "Add comments to issues and pull requests"
     rules:
-      - match: { method: POST, path: "/repos/*/issues/*/comments" }
-      - match: { method: POST, path: "/repos/*/pulls/*/comments" }
+      - match: { method: POST, path: "/repos/*/*/issues/*/comments" }
+      - match: { method: POST, path: "/repos/*/*/pulls/*/comments" }
+      - match: { method: POST, path: "/repos/*/*/pulls/*/reviews" }
 
   - name: manage_labels
     description: "Add and remove labels on issues"
     rules:
-      - match: { method: POST, path: "/repos/*/issues/*/labels" }
-      - match: { method: DELETE, path: "/repos/*/issues/*/labels/*" }
+      - match: { method: POST, path: "/repos/*/*/issues/*/labels" }
+      - match: { method: DELETE, path: "/repos/*/*/issues/*/labels/*" }
 
   - name: create_pull_requests
     description: "Create new pull requests"
     rules:
-      - match: { method: POST, path: "/repos/*/pulls" }
+      - match: { method: POST, path: "/repos/*/*/pulls" }
+
+  - name: update_pull_requests
+    description: "Edit existing pull requests"
+    rules:
+      - match: { method: PATCH, path: "/repos/*/*/pulls/*" }
+
+  - name: merge_pull_requests
+    description: "Merge pull requests"
+    rules:
+      - match: { method: PUT, path: "/repos/*/*/pulls/*/merge" }
 
   - name: manage_releases
-    description: "Create and manage releases"
+    description: "Create, update, and delete releases"
     rules:
-      - match: { method: POST, path: "/repos/*/releases" }
-      - match: { method: PATCH, path: "/repos/*/releases/*" }
+      - match: { method: POST, path: "/repos/*/*/releases" }
+      - match: { method: PATCH, path: "/repos/*/*/releases/*" }
+      - match: { method: DELETE, path: "/repos/*/*/releases/*" }
+
+  - name: manage_files
+    description: "Create, update, and delete file contents in repositories"
+    rules:
+      - match: { method: PUT, path: "/repos/*/*/contents/*" }
+      - match: { method: DELETE, path: "/repos/*/*/contents/*" }
+
+  - name: manage_branches
+    description: "Create and delete branches and branch protection rules"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/branches/*/protection" }
+      - match: { method: PUT, path: "/repos/*/*/branches/*/protection" }
+      - match: { method: DELETE, path: "/repos/*/*/branches/*/protection" }
+      - match: { method: POST, path: "/repos/*/*/git/refs" }
+      - match: { method: DELETE, path: "/repos/*/*/git/refs/*" }
+
+  - name: manage_repos
+    description: "Create, update, and delete repositories"
+    rules:
+      - match: { method: POST, path: "/user/repos" }
+      - match: { method: POST, path: "/orgs/*/repos" }
+      - match: { method: PATCH, path: "/repos/*/*" }
+      - match: { method: DELETE, path: "/repos/*/*" }
+
+  - name: manage_gists
+    description: "Create, update, and delete gists"
+    rules:
+      - match: { method: POST, path: "/gists" }
+      - match: { method: PATCH, path: "/gists/*" }
+      - match: { method: DELETE, path: "/gists/*" }
+
+  - name: manage_reactions
+    description: "Add and remove reactions on issues, comments, and PRs"
+    rules:
+      - match: { method: POST, path: "/repos/*/*/issues/*/reactions" }
+      - match: { method: POST, path: "/repos/*/*/issues/*/comments/*/reactions" }
+      - match: { method: POST, path: "/repos/*/*/pulls/*/comments/*/reactions" }
+      - match: { method: DELETE, path: "/repos/*/*/issues/*/reactions/*" }
+      - match: { method: DELETE, path: "/repos/*/*/issues/*/comments/*/reactions/*" }
+      - match: { method: DELETE, path: "/repos/*/*/pulls/*/comments/*/reactions/*" }

@@ -122,12 +122,20 @@ endpoints:
 
 | Capability | Description |
 |------------|-------------|
-| `read_data` | Read repositories, issues, pull requests |
+| `read_data` | Read repositories, issues, pull requests, and other data |
 | `create_issues` | Create new issues in repositories |
-| `create_comments` | Add comments to issues and PRs |
+| `update_issues` | Edit existing issues (title, body, state, assignees, milestone) |
+| `create_comments` | Add comments to issues and pull requests |
 | `manage_labels` | Add and remove labels on issues |
 | `create_pull_requests` | Create new pull requests |
-| `manage_releases` | Create and manage releases |
+| `update_pull_requests` | Edit existing pull requests |
+| `merge_pull_requests` | Merge pull requests |
+| `manage_releases` | Create, update, and delete releases |
+| `manage_files` | Create, update, and delete file contents in repositories |
+| `manage_branches` | Create and delete branches and branch protection rules |
+| `manage_repos` | Create, update, and delete repositories |
+| `manage_gists` | Create, update, and delete gists |
+| `manage_reactions` | Add and remove reactions on issues, comments, and PRs |
 
 **Example:**
 ```yaml
@@ -139,8 +147,10 @@ endpoints:
     capabilities:
       read_data: allow
       create_issues: allow
+      update_issues: allow
       create_comments: allow
       create_pull_requests: ask
+      merge_pull_requests: ask
 ```
 
 **Get your token:** [GitHub Personal Access Tokens](https://github.com/settings/tokens)
