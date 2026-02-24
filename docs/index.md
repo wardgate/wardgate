@@ -51,6 +51,7 @@ conclaves:
 ### API Gateway
 
 - [Presets Reference](presets.md) -- Built-in presets, capabilities, and how to create your own
+- [Sealed Credentials](sealed-credentials.md) -- Let agents carry their own encrypted API keys
 - [Configuration Reference](config.md) -- All configuration options including sensitive data filtering
 
 ### Conclaves

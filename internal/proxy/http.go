@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -17,24 +18,68 @@ import (
 	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
+	"github.com/wardgate/wardgate/internal/seal"
 )
+
+const sealedHeaderPrefix = "X-Wardgate-Sealed-"
+
+// DefaultAllowedSealHeaders is the default whitelist of headers that can be sealed.
+// Only common auth-related headers are allowed unless the operator expands the list.
+var DefaultAllowedSealHeaders = []string{
+	"Authorization",
+	"X-Api-Key",
+	"X-Auth-Token",
+	"Proxy-Authorization",
+}
 
 // Proxy handles HTTP requests to an endpoint.
 type Proxy struct {
-	endpoint     config.Endpoint
-	endpointName string
-	vault        auth.Vault
-	engine       *policy.Engine
-	upstream     *url.URL
-	timeout      time.Duration
-	approvals    *approval.Manager
-	filter       *filter.Filter
-	grantStore   *grants.Store
+	endpoint           config.Endpoint
+	endpointName       string
+	vault              auth.Vault
+	engine             *policy.Engine
+	upstream           *url.URL
+	timeout            time.Duration
+	approvals          *approval.Manager
+	filter             *filter.Filter
+	grantStore         *grants.Store
+	sealer             *seal.Sealer
+	allowedSealHeaders map[string]bool
+}
+
+// SetSealer sets the sealer for decrypting sealed credential headers.
+func (p *Proxy) SetSealer(s *seal.Sealer) {
+	p.sealer = s
+}
+
+// SetAllowedSealHeaders sets the whitelist of headers that can be sealed.
+// If headers is empty, uses the default allowed headers.
+// Headers are normalized using http.CanonicalHeaderKey for case-insensitive comparison.
+func (p *Proxy) SetAllowedSealHeaders(headers []string) {
+	if len(headers) == 0 {
+		headers = DefaultAllowedSealHeaders
+	}
+	p.allowedSealHeaders = make(map[string]bool, len(headers))
+	for _, h := range headers {
+		p.allowedSealHeaders[http.CanonicalHeaderKey(h)] = true
+	}
+}
+
+func (p *Proxy) isSealHeaderAllowed(header string) bool {
+	if p.allowedSealHeaders == nil {
+		return false
+	}
+	return p.allowedSealHeaders[http.CanonicalHeaderKey(header)]
 }
 
 // SetGrantStore sets the grant store for dynamic policy overrides.
 func (p *Proxy) SetGrantStore(s *grants.Store) {
 	p.grantStore = s
+}
+
+// SetSSEMode is a placeholder for SSE mode configuration.
+func (p *Proxy) SetSSEMode(mode string) {
+	// TODO: Implement SSE mode support
 }
 
 // New creates a new proxy for the given endpoint.
@@ -118,11 +163,27 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get credential
-	cred, err := p.vault.Get(p.endpoint.Auth.CredentialEnv)
-	if err != nil {
-		http.Error(w, "credential error", http.StatusInternalServerError)
-		return
+	// Get credential (skip for sealed — agent provides credentials)
+	var cred string
+	if p.endpoint.Auth.Sealed {
+		hasSealedHeader := false
+		for name := range r.Header {
+			if strings.HasPrefix(name, sealedHeaderPrefix) {
+				hasSealedHeader = true
+				break
+			}
+		}
+		if !hasSealedHeader {
+			http.Error(w, "missing X-Wardgate-Sealed-* headers", http.StatusBadRequest)
+			return
+		}
+	} else {
+		var err error
+		cred, err = p.vault.Get(p.endpoint.Auth.CredentialEnv)
+		if err != nil {
+			http.Error(w, "credential error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Create reverse proxy
@@ -133,8 +194,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			req.URL.Path = p.upstream.Path + r.URL.Path
 			req.Host = p.upstream.Host
 
-			// Inject credential (strip agent auth first)
-			if p.endpoint.Auth.Type == "bearer" {
+			if p.endpoint.Auth.Sealed && p.sealer != nil {
+				p.processSealedHeaders(req, r.Header)
+			} else if p.endpoint.Auth.Type == "bearer" {
 				req.Header.Set("Authorization", "Bearer "+cred)
 			}
 		},
@@ -154,6 +216,35 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	proxy.ServeHTTP(w, r)
+}
+
+// processSealedHeaders decrypts X-Wardgate-Sealed-* headers and sets the real
+// headers on the outgoing request. Only headers in the allowed whitelist are processed.
+func (p *Proxy) processSealedHeaders(req *http.Request, incoming http.Header) {
+	// Remove agent's Wardgate auth header before setting decrypted values
+	req.Header.Del("Authorization")
+
+	for name, values := range incoming {
+		if !strings.HasPrefix(name, sealedHeaderPrefix) {
+			continue
+		}
+		realHeader := strings.TrimPrefix(name, sealedHeaderPrefix)
+		if !p.isSealHeaderAllowed(realHeader) {
+			log.Printf("sealed header %q not in allowed list, skipping", realHeader)
+			req.Header.Del(name)
+			continue
+		}
+		req.Header.Del(realHeader) // clear before Add loop so only decrypted values remain
+		for _, sealed := range values {
+			plaintext, err := p.sealer.Decrypt(sealed)
+			if err != nil {
+				log.Printf("failed to decrypt sealed header %q: %v", realHeader, err)
+				continue
+			}
+			req.Header.Add(realHeader, plaintext)
+		}
+		req.Header.Del(name)
+	}
 }
 
 // modifyResponse filters sensitive data from response bodies.

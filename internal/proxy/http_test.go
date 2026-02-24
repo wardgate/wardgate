@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/policy"
+	"github.com/wardgate/wardgate/internal/seal"
 )
 
 // mockVault implements auth.Vault for testing
@@ -429,5 +432,546 @@ func TestProxy_GrantOverridesPolicy(t *testing.T) {
 	}
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func newTestSealer(t *testing.T) *seal.Sealer {
+	t.Helper()
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	s, err := seal.New(hex.EncodeToString(key), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestProxy_SealedHeaderForwarded(t *testing.T) {
+	var receivedAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, err := sealer.Encrypt("Bearer ghp_realtoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/repos/owner/repo", nil)
+	req.Header.Set("Authorization", "Bearer agent-jwt-token")
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedValue)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if receivedAuth != "Bearer ghp_realtoken" {
+		t.Errorf("expected decrypted token, got %q", receivedAuth)
+	}
+}
+
+func TestProxy_SealedMultipleHeaders(t *testing.T) {
+	var receivedAuth, receivedAPIKey string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		receivedAPIKey = r.Header.Get("X-Api-Key")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedAuth, _ := sealer.Encrypt("Bearer ghp_token")
+	sealedKey, _ := sealer.Encrypt("key_12345")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedAuth)
+	req.Header.Set("X-Wardgate-Sealed-X-Api-Key", sealedKey)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if receivedAuth != "Bearer ghp_token" {
+		t.Errorf("expected decrypted auth, got %q", receivedAuth)
+	}
+	if receivedAPIKey != "key_12345" {
+		t.Errorf("expected decrypted API key, got %q", receivedAPIKey)
+	}
+}
+
+func TestProxy_SealedMissingHeaders(t *testing.T) {
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: "http://localhost:1",
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	sealer := newTestSealer(t)
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	// No X-Wardgate-Sealed-* headers
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing sealed headers, got %d", rec.Code)
+	}
+}
+
+func TestProxy_SealedStripsAgentAuth(t *testing.T) {
+	var receivedAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, _ := sealer.Encrypt("Bearer upstream-token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("Authorization", "Bearer agent-jwt")
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedValue)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	// Should get the decrypted upstream token, not the agent JWT
+	if receivedAuth != "Bearer upstream-token" {
+		t.Errorf("expected upstream token, got %q", receivedAuth)
+	}
+}
+
+func TestProxy_SealedStripsPrefix(t *testing.T) {
+	var headers http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, _ := sealer.Encrypt("key-value-123")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("X-Wardgate-Sealed-X-Api-Key", sealedValue)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Sealed header should be stripped
+	if headers.Get("X-Wardgate-Sealed-X-Api-Key") != "" {
+		t.Error("sealed header should be stripped from upstream request")
+	}
+	// Decrypted header should be present
+	if headers.Get("X-Api-Key") != "key-value-123" {
+		t.Errorf("expected decrypted X-Api-Key header, got %q", headers.Get("X-Api-Key"))
+	}
+}
+
+func TestProxy_SealedInvalidEncryptedValue(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	validSealed, _ := sealer.Encrypt("Bearer good-token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	// One valid sealed header, one invalid (tampered)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", validSealed)
+	req.Header.Set("X-Wardgate-Sealed-X-Api-Key", "not-valid-base64!!!")
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Valid sealed header should be decrypted and forwarded
+	if receivedHeaders.Get("Authorization") != "Bearer good-token" {
+		t.Errorf("expected valid sealed header forwarded, got %q", receivedHeaders.Get("Authorization"))
+	}
+	// Invalid sealed header should be skipped (not forwarded)
+	if receivedHeaders.Get("X-Api-Key") != "" {
+		t.Errorf("expected invalid sealed header to be skipped, got %q", receivedHeaders.Get("X-Api-Key"))
+	}
+}
+
+func TestProxy_SealedPolicyDeny(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called when policy denies")
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, _ := sealer.Encrypt("Bearer token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	// Policy denies DELETE
+	engine := policy.New([]config.Rule{
+		{Match: config.Match{Method: "DELETE"}, Action: "deny", Message: "no deletes"},
+	})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("DELETE", "/data/123", nil)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedValue)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for policy deny on sealed endpoint, got %d", rec.Code)
+	}
+}
+
+func TestProxy_SealedResponseBodyForwarded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id": 42, "status": "created"}`))
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, _ := sealer.Encrypt("Bearer upstream-token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("POST", "/resources", strings.NewReader(`{"name": "test"}`))
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedValue)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if string(body) != `{"id": 42, "status": "created"}` {
+		t.Errorf("unexpected response body: %s", body)
+	}
+	if rec.Header().Get("Content-Type") != "application/json" {
+		t.Error("Content-Type response header not forwarded")
+	}
+}
+
+func TestProxy_SealedPassesThroughRegularHeaders(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedAuth, _ := sealer.Encrypt("Bearer upstream-token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders(DefaultAllowedSealHeaders)
+
+	req := httptest.NewRequest("POST", "/data", nil)
+	req.Header.Set("Authorization", "Bearer agent-jwt")
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedAuth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Request-Id", "req-123")
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Regular headers should be forwarded unchanged
+	if receivedHeaders.Get("Content-Type") != "application/json" {
+		t.Error("Content-Type not forwarded")
+	}
+	if receivedHeaders.Get("Accept") != "application/json" {
+		t.Error("Accept not forwarded")
+	}
+	if receivedHeaders.Get("X-Request-Id") != "req-123" {
+		t.Error("X-Request-Id not forwarded")
+	}
+	// Sealed header should be replaced with decrypted value
+	if receivedHeaders.Get("Authorization") != "Bearer upstream-token" {
+		t.Errorf("expected decrypted Authorization, got %q", receivedHeaders.Get("Authorization"))
+	}
+	// Sealed prefix should be stripped
+	if receivedHeaders.Get("X-Wardgate-Sealed-Authorization") != "" {
+		t.Error("sealed header prefix should be stripped")
+	}
+}
+
+func TestProxy_SealedHeaderWhitelistAllowed(t *testing.T) {
+	var receivedAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedValue, _ := sealer.Encrypt("Bearer ghp_token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders([]string{"Authorization"})
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedValue)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if receivedAuth != "Bearer ghp_token" {
+		t.Errorf("expected decrypted Authorization header, got %q", receivedAuth)
+	}
+}
+
+func TestProxy_SealedHeaderWhitelistRejected(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedHost, _ := sealer.Encrypt("evil.example.com")
+	sealedAuth, _ := sealer.Encrypt("Bearer good-token")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	// Only allow Authorization, not Host
+	p.SetAllowedSealHeaders([]string{"Authorization"})
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("X-Wardgate-Sealed-Host", sealedHost)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedAuth)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Authorization should be forwarded (it's in the whitelist)
+	if receivedHeaders.Get("Authorization") != "Bearer good-token" {
+		t.Errorf("expected Authorization forwarded, got %q", receivedHeaders.Get("Authorization"))
+	}
+	// Sealed Host header should be stripped (not in whitelist)
+	if receivedHeaders.Get("X-Wardgate-Sealed-Host") != "" {
+		t.Error("sealed Host header should be stripped from upstream request")
+	}
+}
+
+func TestProxy_SealedHeaderDefaultWhitelist(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedAuth, _ := sealer.Encrypt("Bearer token")
+	sealedKey, _ := sealer.Encrypt("key_123")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	// Empty list falls back to DefaultAllowedSealHeaders
+	p.SetAllowedSealHeaders(nil)
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Set("X-Wardgate-Sealed-Authorization", sealedAuth)
+	req.Header.Set("X-Wardgate-Sealed-X-Api-Key", sealedKey)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Default whitelist should allow these
+	if receivedHeaders.Get("Authorization") != "Bearer token" {
+		t.Errorf("expected Authorization from default whitelist, got %q", receivedHeaders.Get("Authorization"))
+	}
+	if receivedHeaders.Get("X-Api-Key") != "key_123" {
+		t.Errorf("expected X-Api-Key from default whitelist, got %q", receivedHeaders.Get("X-Api-Key"))
+	}
+}
+
+func TestProxy_SealedMultipleValuesForSameHeader(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	sealer := newTestSealer(t)
+	sealedVal1, _ := sealer.Encrypt("value-one")
+	sealedVal2, _ := sealer.Encrypt("value-two")
+
+	vault := &mockVault{creds: map[string]string{}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Sealed: true},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	p := New(endpoint, vault, engine)
+	p.SetSealer(sealer)
+	p.SetAllowedSealHeaders([]string{"X-Auth-Token"})
+
+	req := httptest.NewRequest("GET", "/data", nil)
+	req.Header.Add("X-Wardgate-Sealed-X-Auth-Token", sealedVal1)
+	req.Header.Add("X-Wardgate-Sealed-X-Auth-Token", sealedVal2)
+	rec := httptest.NewRecorder()
+
+	p.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Both decrypted values should be present
+	vals := receivedHeaders.Values("X-Auth-Token")
+	if len(vals) != 2 {
+		t.Fatalf("expected 2 values for X-Auth-Token, got %d: %v", len(vals), vals)
+	}
+	if vals[0] != "value-one" {
+		t.Errorf("expected first value 'value-one', got %q", vals[0])
+	}
+	if vals[1] != "value-two" {
+		t.Errorf("expected second value 'value-two', got %q", vals[1])
+	}
+	// Sealed prefix should be stripped
+	if receivedHeaders.Get("X-Wardgate-Sealed-X-Auth-Token") != "" {
+		t.Error("sealed header prefix should be stripped")
 	}
 }

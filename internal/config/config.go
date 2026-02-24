@@ -248,6 +248,13 @@ type JWTConfig struct {
 	Audience  string `yaml:"audience,omitempty"`   // Expected "aud" claim (optional)
 }
 
+// SealConfig defines sealed credential decryption settings.
+type SealConfig struct {
+	KeyEnv         string   `yaml:"key_env"`
+	CacheSize      int      `yaml:"cache_size,omitempty"`       // LRU cache capacity (default: 1000)
+	AllowedHeaders []string `yaml:"allowed_headers,omitempty"`  // Whitelist of headers that can be sealed
+}
+
 // ServerConfig holds server settings.
 type ServerConfig struct {
 	Listen      string        `yaml:"listen"`
@@ -256,6 +263,7 @@ type ServerConfig struct {
 	GrantsFile  string        `yaml:"grants_file,omitempty"`   // Path to grants file (default: grants.json)
 	Logging     LoggingConfig `yaml:"logging,omitempty"`       // Logging dashboard configuration
 	JWT         *JWTConfig    `yaml:"jwt,omitempty"`           // JWT agent authentication (optional)
+	Seal        *SealConfig   `yaml:"seal,omitempty"`          // Sealed credential decryption (optional)
 }
 
 // LoggingConfig holds logging dashboard settings.
@@ -357,6 +365,7 @@ type SMTPConfig struct {
 type AuthConfig struct {
 	Type          string `yaml:"type"`
 	CredentialEnv string `yaml:"credential_env"`
+	Sealed        bool   `yaml:"sealed,omitempty"` // Credentials come from agent's sealed headers
 }
 
 // Rule defines a policy rule for an endpoint.
@@ -608,6 +617,13 @@ func (c *Config) validate() error {
 		}
 	}
 
+	// Validate seal config
+	if c.Server.Seal != nil {
+		if c.Server.Seal.KeyEnv == "" {
+			return fmt.Errorf("server.seal: missing key_env")
+		}
+	}
+
 	for name, ep := range c.Endpoints {
 		if len(ep.Capabilities) > 0 && ep.Preset == "" {
 			return fmt.Errorf("endpoint %q: capabilities require a preset", name)
@@ -654,7 +670,14 @@ func (c *Config) validate() error {
 		if ep.Upstream == "" {
 			return fmt.Errorf("endpoint %q: missing upstream", name)
 		}
-		if ep.Auth.Type == "" || ep.Auth.CredentialEnv == "" {
+		if ep.Auth.Sealed {
+			if ep.Auth.CredentialEnv != "" {
+				return fmt.Errorf("endpoint %q: sealed and credential_env are mutually exclusive", name)
+			}
+			if c.Server.Seal == nil {
+				return fmt.Errorf("endpoint %q: sealed requires server.seal configuration", name)
+			}
+		} else if ep.Auth.Type == "" || ep.Auth.CredentialEnv == "" {
 			return fmt.Errorf("endpoint %q: missing auth configuration", name)
 		}
 		for i, rule := range ep.Rules {
@@ -706,6 +729,16 @@ func (c *Config) ValidateEnv() error {
 		}
 		if val == "" {
 			log.Printf("Warning: server: environment variable %s is set but empty", c.Server.AdminKeyEnv)
+		}
+	}
+
+	if c.Server.Seal != nil && c.Server.Seal.KeyEnv != "" {
+		val, ok := os.LookupEnv(c.Server.Seal.KeyEnv)
+		if !ok {
+			return fmt.Errorf("server.seal: environment variable %s not set (referenced by key_env)", c.Server.Seal.KeyEnv)
+		}
+		if val == "" {
+			log.Printf("Warning: server.seal: environment variable %s is set but empty", c.Server.Seal.KeyEnv)
 		}
 	}
 
