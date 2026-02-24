@@ -266,6 +266,8 @@ Server configuration.
 | `admin_key_env` | string | | Env var for admin key (enables Web UI at `/ui/` and CLI) |
 | `logging.max_entries` | int | `1000` | Max log entries to keep in memory for dashboard |
 | `logging.store_bodies` | bool | `false` | Store request bodies in logs (privacy consideration) |
+| `seal.key_env` | string | | Env var holding 32-byte hex AES-256 key for [sealed credentials](sealed-credentials.md) |
+| `seal.cache_size` | int | `1000` | Max entries in the decryption LRU cache |
 
 ```yaml
 server:
@@ -426,18 +428,28 @@ Authentication configuration for the upstream service.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | Authentication type (`bearer`) |
-| `credential_env` | string | Yes | Environment variable containing the credential |
+| `type` | string | Yes* | Authentication type (`bearer`) |
+| `credential_env` | string | Yes* | Environment variable containing the credential |
+| `sealed` | bool | No | Credentials come from agent's encrypted `X-Wardgate-Sealed-*` headers |
+
+\* Not required when `sealed: true`.
 
 ```yaml
+# Static credentials (Wardgate injects from vault)
 auth:
   type: bearer
   credential_env: WARDGATE_CRED_TODOIST_API_KEY
+
+# Sealed credentials (agent provides encrypted values)
+auth:
+  sealed: true
 ```
 
 Currently supported types:
 - `bearer` - Adds `Authorization: Bearer <credential>` header
 - `plain` - For IMAP: credential format is `username:password`
+
+When `sealed: true`, the agent sends encrypted header values prefixed with `X-Wardgate-Sealed-*`. Wardgate decrypts and forwards them. See **[Sealed Credentials](sealed-credentials.md)** for full documentation.
 
 ### endpoints.rules
 

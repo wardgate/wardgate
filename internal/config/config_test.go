@@ -1421,6 +1421,194 @@ endpoints:
 	}
 }
 
+// Sealed credential tests
+
+func TestLoadConfig_SealedEndpointValid(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+  seal:
+    key_env: WARDGATE_SEAL_KEY
+endpoints:
+  github:
+    upstream: https://api.github.com
+    auth:
+      sealed: true
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := cfg.Endpoints["github"]
+	if !ep.Auth.Sealed {
+		t.Error("expected sealed to be true")
+	}
+	if ep.Auth.Type != "" {
+		t.Errorf("expected empty auth type for sealed, got %s", ep.Auth.Type)
+	}
+}
+
+func TestLoadConfig_SealedWithoutServerSeal(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+endpoints:
+  github:
+    upstream: https://api.github.com
+    auth:
+      sealed: true
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error when sealed without server.seal")
+	}
+	if !strings.Contains(err.Error(), "sealed requires server.seal") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfig_SealedWithCredentialEnv(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+  seal:
+    key_env: WARDGATE_SEAL_KEY
+endpoints:
+  github:
+    upstream: https://api.github.com
+    auth:
+      sealed: true
+      credential_env: GITHUB_TOKEN
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error when sealed and credential_env both set")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfig_SealMissingKeyEnv(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+  seal:
+    cache_size: 500
+endpoints:
+  test:
+    upstream: https://example.com
+    auth:
+      type: bearer
+      credential_env: TEST_KEY
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for seal missing key_env")
+	}
+	if !strings.Contains(err.Error(), "key_env") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfig_SealedEndpointWithCacheSize(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+  seal:
+    key_env: WARDGATE_SEAL_KEY
+    cache_size: 500
+endpoints:
+  github:
+    upstream: https://api.github.com
+    auth:
+      sealed: true
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Server.Seal.CacheSize != 500 {
+		t.Errorf("expected cache_size 500, got %d", cfg.Server.Seal.CacheSize)
+	}
+}
+
+func TestValidateEnv_SealKeyEnvMissing(t *testing.T) {
+	os.Unsetenv("WARDGATE_NONEXISTENT_SEAL_KEY")
+	cfg := &Config{
+		Server: ServerConfig{
+			Seal: &SealConfig{KeyEnv: "WARDGATE_NONEXISTENT_SEAL_KEY"},
+		},
+	}
+	err := cfg.ValidateEnv()
+	if err == nil {
+		t.Fatal("expected error for missing seal key_env")
+	}
+	if !strings.Contains(err.Error(), "WARDGATE_NONEXISTENT_SEAL_KEY") {
+		t.Errorf("error should mention env var name: %v", err)
+	}
+}
+
+func TestValidateEnv_SealKeyEnvPresent(t *testing.T) {
+	t.Setenv("TEST_SEAL_KEY", "abcd1234")
+	cfg := &Config{
+		Server: ServerConfig{
+			Seal: &SealConfig{KeyEnv: "TEST_SEAL_KEY"},
+		},
+	}
+	if err := cfg.ValidateEnv(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfig_SealedWithAllowedHeaders(t *testing.T) {
+	yaml := `
+server:
+  seal:
+    key_env: TEST_SEAL_KEY
+    allowed_headers:
+      - Authorization
+      - X-Custom-Auth
+
+endpoints:
+  github:
+    upstream: https://api.github.com
+    auth:
+      sealed: true
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Server.Seal == nil {
+		t.Fatal("expected seal config")
+	}
+
+	if len(cfg.Server.Seal.AllowedHeaders) != 2 {
+		t.Errorf("expected 2 allowed headers, got %d", len(cfg.Server.Seal.AllowedHeaders))
+	}
+
+	if cfg.Server.Seal.AllowedHeaders[0] != "Authorization" {
+		t.Errorf("expected first header Authorization, got %s", cfg.Server.Seal.AllowedHeaders[0])
+	}
+
+	if cfg.Server.Seal.AllowedHeaders[1] != "X-Custom-Auth" {
+		t.Errorf("expected second header X-Custom-Auth, got %s", cfg.Server.Seal.AllowedHeaders[1])
+	}
+}
+
 func TestLoadConfig_CapabilitiesWithoutPreset(t *testing.T) {
 	yaml := `
 endpoints:

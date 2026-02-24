@@ -26,6 +26,7 @@ import (
 	"github.com/wardgate/wardgate/internal/notify"
 	"github.com/wardgate/wardgate/internal/policy"
 	"github.com/wardgate/wardgate/internal/proxy"
+	"github.com/wardgate/wardgate/internal/seal"
 	"github.com/wardgate/wardgate/internal/smtp"
 	sshpkg "github.com/wardgate/wardgate/internal/ssh"
 )
@@ -54,6 +55,7 @@ Commands:
   agent       Manage agents (list, add, remove)
   conclave    Manage conclaves (list, add, remove)
   grants      Manage dynamic grants (list, add, revoke)
+  seal        Encrypt a value using the seal key (uses --key-env or config)
 
 Run 'wardgate <command>' with no args for command-specific help.
 `, version)
@@ -78,6 +80,9 @@ func main() {
 			return
 		case "grants":
 			runGrantsCmd(os.Args[2:])
+			return
+		case "seal":
+			runSealCmd(os.Args[2:])
 			return
 		default:
 			if !strings.HasPrefix(arg, "-") {
@@ -116,6 +121,17 @@ func main() {
 
 	if err := cfg.ValidateEnv(); err != nil {
 		log.Fatalf("Config environment check failed: %v", err)
+	}
+
+	// Initialize sealer if configured
+	var sealer *seal.Sealer
+	if cfg.Server.Seal != nil {
+		var sealErr error
+		sealer, sealErr = seal.New(os.Getenv(cfg.Server.Seal.KeyEnv), cfg.Server.Seal.CacheSize)
+		if sealErr != nil {
+			log.Fatalf("Failed to initialize sealer: %v", sealErr)
+		}
+		log.Printf("Sealed credentials enabled (cache size: %d)", sealer.CacheSize())
 	}
 
 	// Setup components
@@ -267,6 +283,14 @@ func main() {
 				p.SetApprovalManager(approvalMgr)
 			}
 			p.SetGrantStore(grantStore)
+			if sealer != nil {
+				p.SetSealer(sealer)
+				allowedHeaders := cfg.Server.Seal.AllowedHeaders
+				if len(allowedHeaders) == 0 {
+					allowedHeaders = proxy.DefaultAllowedSealHeaders
+				}
+				p.SetAllowedSealHeaders(allowedHeaders)
+			}
 			h = auditMiddleware(auditLog, name, p)
 			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, endpoint.Upstream)
 		}
@@ -894,4 +918,63 @@ func runGrantsCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "Unknown grants subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
+}
+
+func runSealCmd(args []string) {
+	fs := flag.NewFlagSet("seal", flag.ExitOnError)
+	keyEnvFlag := fs.String("key-env", "", "Environment variable holding the seal key")
+	configPath := fs.String("config", "config.yaml", "Path to config file")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: wardgate seal [flags] <plaintext-value>\n\n")
+		fmt.Fprintf(os.Stderr, "Encrypts a value using the seal key.\n\n")
+		fmt.Fprintf(os.Stderr, "The key is resolved in order:\n")
+		fmt.Fprintf(os.Stderr, "  1. --key-env flag (env var name)\n")
+		fmt.Fprintf(os.Stderr, "  2. server.seal.key_env from config file\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	if fs.NArg() == 0 {
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	_ = godotenv.Load(".env") // best effort
+
+	// Resolve key env var name: flag > config > error
+	keyEnv := *keyEnvFlag
+	if keyEnv == "" {
+		if cfg, err := config.LoadFromFile(*configPath); err == nil && cfg.Server.Seal != nil {
+			keyEnv = cfg.Server.Seal.KeyEnv
+		}
+	}
+	if keyEnv == "" {
+		fmt.Fprintln(os.Stderr, "Error: seal key env not configured")
+		fmt.Fprintln(os.Stderr, "Provide --key-env flag or set server.seal.key_env in config.yaml")
+		os.Exit(1)
+	}
+
+	hexKey := os.Getenv(keyEnv)
+	if hexKey == "" {
+		fmt.Fprintf(os.Stderr, "Error: environment variable %s is not set\n", keyEnv)
+		os.Exit(1)
+	}
+
+	s, err := seal.New(hexKey, 1) // cache size irrelevant for one-shot
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating sealer: %v\n", err)
+		os.Exit(1)
+	}
+
+	sealed, err := s.Encrypt(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error encrypting: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(sealed)
 }
