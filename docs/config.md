@@ -268,6 +268,7 @@ Server configuration.
 | `logging.store_bodies` | bool | `false` | Store request bodies in logs (privacy consideration) |
 | `seal.key_env` | string | | Env var holding 32-byte hex AES-256 key for [sealed credentials](sealed-credentials.md) |
 | `seal.cache_size` | int | `1000` | Max entries in the decryption LRU cache |
+| `seal.allowed_headers` | []string | `[Authorization, X-Api-Key, X-Auth-Token, Proxy-Authorization]` | Whitelist of headers agents can seal |
 
 ```yaml
 server:

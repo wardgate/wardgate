@@ -1,6 +1,6 @@
 # Sealed Credentials
 
-Sealed credentials let agents carry their own encrypted API keys. Wardgate decrypts them at proxy time and forwards the real values to upstream services. Agents never see the plaintext -- even if they dump the encrypted values, those are useless without the seal key (which lives only on the Wardgate server).
+Sealed credentials let agents carry their own encrypted API keys. Wardgate decrypts them at proxy time and forwards the real values to upstream services. Agents never see the plaintext - even if they dump the encrypted values, those are useless without the seal key (which lives only on the Wardgate server).
 
 ## When to Use
 
