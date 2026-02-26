@@ -397,14 +397,20 @@ Map of endpoint names to their configuration.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `adapter` | string | No | Adapter type: `http` (default), `imap`, `smtp`, or `ssh` |
+| `preset` | string | No | Preset name to use as base configuration (see [Presets](presets.md)) |
+| `description` | string | No | Human-readable description (shown in discovery API) |
 | `agents` | array | No | Agent IDs allowed to access this endpoint (empty = all agents) |
-| `upstream` | string | Yes | URL of the upstream service |
+| `upstream` | string | Yes* | URL of the upstream service |
+| `allowed_upstreams` | array | No | Glob patterns for dynamic upstream targets (see [Dynamic Upstreams](#dynamic-upstreams)) |
 | `docs_url` | string | No | Link to API documentation (exposed in discovery, overrides preset) |
 | `auth` | object | Yes | Authentication configuration |
 | `rules` | array | No | Policy rules (default: deny all) |
+| `filter` | object | No | Sensitive data filtering (see [Sensitive Data Filtering](#sensitive-data-filtering)) |
 | `imap` | object | No | IMAP-specific settings (for `adapter: imap`) |
 | `smtp` | object | No | SMTP-specific settings (for `adapter: smtp`) |
 | `ssh` | object | No | SSH-specific settings (for `adapter: ssh`) |
+
+\* Either `upstream` or `allowed_upstreams` is required for HTTP endpoints.
 
 ```yaml
 endpoints:
@@ -1187,6 +1193,62 @@ Host key verification is required by default. You must provide one of:
 - `known_hosts_file`: path to a known_hosts file
 - `insecure_skip_verify: true`: disable verification (logs a warning, not recommended for production)
 
+## Dynamic Upstreams
+
+By default, each endpoint has a fixed `upstream` URL. Dynamic upstreams allow agents to choose the target URL per-request using the `X-Wardgate-Upstream` header, validated against an allowlist of glob patterns.
+
+This is useful for endpoints that proxy to multiple services sharing the same credentials (e.g., different Google API hosts).
+
+### Configuration
+
+```yaml
+endpoints:
+  google-apis:
+    # No static upstream needed (but can be set as fallback)
+    allowed_upstreams:
+      - "https://*.googleapis.com"
+      - "https://api.example.com/v1"
+    auth:
+      type: bearer
+      credential_env: WARDGATE_CRED_GOOGLE
+    rules:
+      - match: { method: GET }
+        action: allow
+```
+
+### Usage
+
+Agents set the target per-request:
+
+```
+GET /google-apis/storage/v1/b/my-bucket
+X-Wardgate-Upstream: https://storage.googleapis.com
+Authorization: Bearer <agent-key>
+```
+
+### Pattern Syntax
+
+Patterns use glob-style matching with scheme enforcement:
+
+| Pattern | Matches | Does Not Match |
+|---------|---------|----------------|
+| `https://api.example.com` | `https://api.example.com/any/path` | `http://api.example.com` (scheme mismatch) |
+| `https://*.googleapis.com` | `https://storage.googleapis.com` | `https://googleapis.com` (no subdomain) |
+| `https://api.example.com/v1` | `https://api.example.com/v1/users` | `https://api.example.com/v1-admin` (path segment boundary) |
+
+Hostname matching is case-insensitive. Path matching enforces segment boundaries (`/v1` matches `/v1/foo` but not `/v1-admin`).
+
+### Security
+
+- URLs with userinfo (`http://user@host`), query parameters, or fragments are rejected
+- Only `http://` and `https://` schemes are allowed
+- The `X-Wardgate-Upstream` header is stripped before forwarding to the upstream
+- Policy rules are evaluated before upstream resolution
+
+### Fallback
+
+If both `upstream` and `allowed_upstreams` are set, the static upstream is used when no `X-Wardgate-Upstream` header is present. If only `allowed_upstreams` is set, the header is required.
+
 ## Sensitive Data Filtering
 
 Wardgate can automatically detect and filter sensitive data in API responses and email messages. This prevents agents from seeing OTP codes, verification links, API keys, and other security-sensitive information.
@@ -1247,6 +1309,181 @@ filter_defaults:
 | `custom_patterns` | array | | User-defined regex patterns |
 | `action` | string | `block` | Action when detected: `block`, `redact`, `ask`, `log` |
 | `replacement` | string | `[SENSITIVE DATA REDACTED]` | Replacement text for `redact` action |
+| `sse_mode` | string | `filter` | SSE stream handling: `filter` or `passthrough` (see [SSE Streaming](#sse-streaming)) |
+
+### SSE Streaming
+
+When an upstream returns `Content-Type: text/event-stream` (Server-Sent Events), Wardgate filters each SSE message individually as it streams through, rather than buffering the entire response. This allows real-time filtering of LLM streaming responses.
+
+**Behavior by mode:**
+
+| Mode | Description |
+|------|-------------|
+| `filter` (default) | Each SSE message is scanned. `redact` replaces sensitive data inline. `block` terminates the stream with an error event. |
+| `passthrough` | SSE messages are forwarded without scanning (useful for trusted endpoints). |
+
+**How it works:**
+
+- SSE metadata lines (`id:`, `event:`, `retry:`) pass through unchanged
+- Only `data:` fields are scanned for sensitive content
+- The `[DONE]` sentinel (used by OpenAI-compatible APIs) always passes through
+- On `block`, an `event: error` is emitted and the stream terminates:
+  ```
+  event: error
+  data: {"error":"response blocked"}
+  ```
+- Error messages are generic and do not reveal which filter patterns matched (to prevent bypass crafting)
+- SSE lines are limited to 1MB to protect against oversized payloads
+
+**Example:**
+
+```yaml
+endpoints:
+  llm-api:
+    upstream: https://api.openai.com/v1
+    auth:
+      type: bearer
+      credential_env: OPENAI_KEY
+    filter:
+      enabled: true
+      patterns: [api_keys]
+      action: redact
+      sse_mode: filter  # Default - filter SSE streams per-message
+```
+
+### How to Add an SSE Endpoint (OpenAI Example)
+
+This walkthrough shows how to configure Wardgate as a streaming proxy for OpenAI's chat completions API, combining [Dynamic Upstreams](#dynamic-upstreams) with SSE filtering. The same approach works for any OpenAI-compatible API (Anthropic, Groq, local models, etc.).
+
+#### 1. Wardgate Configuration
+
+Create a `config.yaml` with a dynamic upstream endpoint:
+
+```yaml
+server:
+  listen: ":4065"
+
+agents:
+  - id: my-agent
+    key_env: WARDGATE_AGENT_KEY
+
+endpoints:
+  openai:
+    description: "OpenAI API (dynamic upstream)"
+    allowed_upstreams:
+      - "https://api.openai.com"
+    timeout: "5m"
+    auth:
+      type: bearer
+      credential_env: OPENAI_API_KEY
+    filter:
+      enabled: true
+      patterns:
+        - api_keys
+      action: redact
+      sse_mode: filter
+    rules:
+      - match:
+          method: POST
+        action: allow
+      - match:
+          method: "*"
+        action: deny
+        message: "Only POST allowed"
+```
+
+Key points:
+
+- **`allowed_upstreams`** instead of a static `upstream` -- the agent specifies the target via the `X-Wardgate-Upstream` header. This is useful when you want one endpoint definition to cover multiple path prefixes (e.g., `/v1`, `/v2`).
+- **`timeout: "5m"`** -- streaming responses can take a while; set a generous timeout.
+- **`sse_mode: filter`** -- Wardgate scans each SSE chunk for sensitive data as it streams through, rather than buffering the full response.
+- **`patterns: [api_keys]`** -- prevents the LLM from leaking API keys in its output (e.g., if it echoes a key from training data).
+
+#### 2. Environment Variables
+
+Add the credentials to your `.env` file:
+
+```bash
+OPENAI_API_KEY=sk-proj-...
+WARDGATE_AGENT_KEY=my-agent-secret-key
+```
+
+The agent authenticates to Wardgate with `WARDGATE_AGENT_KEY`. Wardgate injects `OPENAI_API_KEY` into the upstream request. The agent never sees the real OpenAI key.
+
+#### 3. Client Usage
+
+The agent sends requests to Wardgate instead of directly to OpenAI, using the agent key for auth and `X-Wardgate-Upstream` to specify the target:
+
+```
+POST /openai/chat/completions
+Host: localhost:4065
+Authorization: Bearer my-agent-secret-key
+X-Wardgate-Upstream: https://api.openai.com/v1
+Content-Type: application/json
+
+{"model": "gpt-4o-mini", "stream": true, "messages": [{"role": "user", "content": "Hello"}]}
+```
+
+Wardgate will:
+1. Authenticate the agent via the `Authorization` header
+2. Validate `X-Wardgate-Upstream` against `allowed_upstreams`
+3. Evaluate the request against `rules` (POST is allowed)
+4. Replace the agent's Bearer token with the real `OPENAI_API_KEY`
+5. Forward the request to `https://api.openai.com/v1/chat/completions`
+6. Stream the SSE response back, filtering each chunk for sensitive data
+
+#### 4. Example: Vercel AI SDK Client
+
+Here is a TypeScript client using the [Vercel AI SDK](https://sdk.vercel.ai/) that streams a chat completion through Wardgate:
+
+```typescript
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamText } from "ai";
+
+const openai = createOpenAI({
+  baseURL: "http://localhost:4065/openai",
+  apiKey: "my-agent-secret-key",
+  headers: {
+    "X-Wardgate-Upstream": "https://api.openai.com/v1",
+  },
+});
+
+const result = streamText({
+  model: openai("gpt-4o-mini"),
+  prompt: "Write a haiku about secure API gateways.",
+});
+
+for await (const chunk of result.textStream) {
+  process.stdout.write(chunk);
+}
+```
+
+The AI SDK sends the `apiKey` as `Authorization: Bearer ...`, which Wardgate uses for agent authentication. The `X-Wardgate-Upstream` header tells Wardgate where to forward the request.
+
+#### 5. Using a Static Upstream Instead
+
+If you only need to proxy to a single OpenAI base URL, you can use a static `upstream` instead of `allowed_upstreams`:
+
+```yaml
+endpoints:
+  openai:
+    upstream: https://api.openai.com/v1
+    auth:
+      type: bearer
+      credential_env: OPENAI_API_KEY
+    filter:
+      enabled: true
+      patterns: [api_keys]
+      action: redact
+      sse_mode: filter
+    rules:
+      - match: { method: POST }
+        action: allow
+      - match: { method: "*" }
+        action: deny
+```
+
+With a static upstream, the agent does not need to send the `X-Wardgate-Upstream` header.
 
 ### Built-in Patterns
 
@@ -1291,7 +1528,7 @@ endpoints:
 
 | Adapter | Filter Applies To | Default Action |
 |---------|------------------|----------------|
-| HTTP | Response bodies (JSON, text, XML) | `block` |
+| HTTP | Response bodies (JSON, text, XML) and SSE streams (per-message) | `block` |
 | IMAP | Message subject and body | `block` |
 | SMTP | Outgoing email subject/body (triggers `ask`) | `ask` |
 | SSH | Command stdout/stderr | `block` |

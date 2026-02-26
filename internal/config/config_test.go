@@ -1715,3 +1715,241 @@ endpoints:
 		t.Errorf("error should mention capabilities: %v", err)
 	}
 }
+
+func TestLoadConfig_AllowedUpstreamsValid(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  google:
+    allowed_upstreams:
+      - "https://*.googleapis.com"
+      - "https://storage.googleapis.com"
+    auth:
+      type: bearer
+      credential_env: GOOGLE_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ep := cfg.Endpoints["google"]
+	if len(ep.AllowedUpstreams) != 2 {
+		t.Errorf("expected 2 allowed upstreams, got %d", len(ep.AllowedUpstreams))
+	}
+	if ep.Upstream != "" {
+		t.Errorf("expected empty upstream, got %s", ep.Upstream)
+	}
+}
+
+func TestLoadConfig_AllowedUpstreamsWithStatic(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  github:
+    upstream: https://api.github.com
+    allowed_upstreams:
+      - "https://api.github.com"
+      - "https://uploads.github.com"
+    auth:
+      type: bearer
+      credential_env: GITHUB_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ep := cfg.Endpoints["github"]
+	if ep.Upstream != "https://api.github.com" {
+		t.Errorf("expected static upstream, got %s", ep.Upstream)
+	}
+	if len(ep.AllowedUpstreams) != 2 {
+		t.Errorf("expected 2 allowed upstreams, got %d", len(ep.AllowedUpstreams))
+	}
+}
+
+func TestLoadConfig_AllowedUpstreamsNoScheme(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  test:
+    allowed_upstreams:
+      - "*.example.com"
+    auth:
+      type: bearer
+      credential_env: TEST_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for allowed_upstreams without scheme")
+	}
+	if !strings.Contains(err.Error(), "http://") {
+		t.Errorf("error should mention scheme requirement: %v", err)
+	}
+}
+
+func TestLoadConfig_AllowedUpstreamsNonHTTPAdapter(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  test:
+    adapter: imap
+    upstream: imaps://imap.example.com:993
+    allowed_upstreams:
+      - "https://api.example.com"
+    auth:
+      type: bearer
+      credential_env: TEST_KEY
+    imap:
+      tls: true
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for allowed_upstreams on non-HTTP adapter")
+	}
+	if !strings.Contains(err.Error(), "only valid for HTTP") {
+		t.Errorf("error should mention HTTP adapter requirement: %v", err)
+	}
+}
+
+func TestLoadConfig_MissingBothUpstreams(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  test:
+    auth:
+      type: bearer
+      credential_env: TEST_KEY
+    rules:
+      - match: { method: GET }
+        action: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error when neither upstream nor allowed_upstreams is set")
+	}
+	if !strings.Contains(err.Error(), "missing upstream") {
+		t.Errorf("error should mention missing upstream: %v", err)
+	}
+}
+
+func TestLoadConfig_TimeoutValid(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  openai:
+    upstream: https://api.openai.com/v1
+    timeout: "10m"
+    auth:
+      type: bearer
+      credential_env: OPENAI_KEY
+    rules:
+      - match: { method: "*" }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ep := cfg.Endpoints["openai"]
+	if ep.Timeout != "10m" {
+		t.Errorf("expected timeout '10m', got %s", ep.Timeout)
+	}
+}
+
+func TestLoadConfig_TimeoutInvalid(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  test:
+    upstream: https://api.example.com
+    timeout: "invalid"
+    auth:
+      type: bearer
+      credential_env: TEST_KEY
+    rules:
+      - match: { method: "*" }
+        action: allow
+`
+	_, err := LoadFromReader(strings.NewReader(yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid timeout")
+	}
+	if !strings.Contains(err.Error(), "invalid timeout") {
+		t.Errorf("error should mention invalid timeout: %v", err)
+	}
+}
+
+func TestLoadConfig_SSEMode(t *testing.T) {
+	yaml := `
+server:
+  listen: ":8080"
+agents:
+  - id: tessa
+    key_env: WARDGATE_AGENT_KEY
+endpoints:
+  openai:
+    upstream: https://api.openai.com/v1
+    auth:
+      type: bearer
+      credential_env: OPENAI_KEY
+    filter:
+      enabled: true
+      patterns: [api_keys]
+      action: redact
+      sse_mode: passthrough
+    rules:
+      - match: { method: "*" }
+        action: allow
+`
+	cfg, err := LoadFromReader(strings.NewReader(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ep := cfg.Endpoints["openai"]
+	if ep.Filter == nil {
+		t.Fatal("expected filter config")
+	}
+	if ep.Filter.SSEMode != "passthrough" {
+		t.Errorf("expected sse_mode 'passthrough', got %s", ep.Filter.SSEMode)
+	}
+}

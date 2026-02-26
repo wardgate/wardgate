@@ -62,6 +62,7 @@ type Config struct {
 	CustomPatterns []CustomPattern `yaml:"custom_patterns,omitempty"` // User-defined patterns
 	Action         Action          `yaml:"action"`
 	Replacement    string          `yaml:"replacement,omitempty"` // Replacement text for redact action
+	SSEMode        string          `yaml:"sse_mode,omitempty"`    // SSE handling: "filter" (default) or "passthrough"
 }
 
 // CustomPattern defines a user-created pattern.
@@ -103,6 +104,7 @@ type Filter struct {
 	patterns    []*Pattern
 	action      Action
 	replacement string
+	sseMode     string
 }
 
 // New creates a new Filter from configuration.
@@ -111,6 +113,7 @@ func New(cfg Config) (*Filter, error) {
 		enabled:     cfg.Enabled,
 		action:      cfg.Action,
 		replacement: cfg.Replacement,
+		sseMode:     cfg.SSEMode,
 	}
 
 	if !cfg.Enabled {
@@ -244,6 +247,15 @@ func (f *Filter) Action() Action {
 // Enabled returns whether the filter is enabled.
 func (f *Filter) Enabled() bool {
 	return f.enabled
+}
+
+// SSEMode returns the SSE handling mode ("filter" or "passthrough").
+// Defaults to "filter" if not set.
+func (f *Filter) SSEMode() string {
+	if f.sseMode == "" {
+		return "filter"
+	}
+	return f.sseMode
 }
 
 // MatchDescription returns a human-readable description of the matches.

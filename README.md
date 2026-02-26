@@ -60,7 +60,8 @@ flowchart LR
 - **Access Control** -- Define what each agent can do: read-only calendar, no email deletion, ask before sending
 - **Presets** -- Pre-configured settings for popular APIs (Todoist, GitHub, Cloudflare, Google Calendar, Postmark, Sentry, IMAP, SMTP, and more)
 - **Protocol Adapters** -- HTTP/REST passthrough, SSH, IMAP and SMTP with REST wrappers
-- **Sensitive Data Filtering** -- Automatically block or redact OTP codes, verification links, and API keys in responses
+- **Sensitive Data Filtering** -- Automatically block or redact OTP codes, verification links, and API keys in responses, including SSE streams (per-message filtering for LLM APIs)
+- **Dynamic Upstreams** -- Agents select targets per-request from a validated allowlist of glob patterns (e.g., `https://*.googleapis.com`)
 
 ### Conclaves (Remote Execution)
 

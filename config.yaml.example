@@ -283,6 +283,47 @@ endpoints:
   #       action: deny
 
   # ---------------------------------------------------------------------------
+  # DYNAMIC UPSTREAMS (agent chooses target per-request)
+  # ---------------------------------------------------------------------------
+  # The agent sets X-Wardgate-Upstream header; Wardgate validates against the
+  # allowed_upstreams glob patterns. Useful for multi-host APIs (e.g., Google).
+  # See docs/config.md#dynamic-upstreams for details.
+
+  # google-apis:
+  #   allowed_upstreams:
+  #     - "https://*.googleapis.com"
+  #   auth:
+  #     type: bearer
+  #     credential_env: WARDGATE_CRED_GOOGLE
+  #   rules:
+  #     - match: { method: GET }
+  #       action: allow
+  #     - match: { method: "*" }
+  #       action: deny
+
+  # ---------------------------------------------------------------------------
+  # LLM API with SSE streaming filter
+  # ---------------------------------------------------------------------------
+  # SSE streams (text/event-stream) are filtered per-message in real time.
+  # Set sse_mode: passthrough to skip filtering on trusted SSE endpoints.
+
+  # openai:
+  #   upstream: https://api.openai.com/v1
+  #   auth:
+  #     type: bearer
+  #     credential_env: WARDGATE_CRED_OPENAI
+  #   filter:
+  #     enabled: true
+  #     patterns: [api_keys]
+  #     action: redact
+  #     sse_mode: filter  # "filter" (default) or "passthrough"
+  #   rules:
+  #     - match: { method: POST, path: "/chat/completions" }
+  #       action: allow
+  #     - match: { method: "*" }
+  #       action: deny
+
+  # ---------------------------------------------------------------------------
   # IMAP (email reading) - using preset
   # ---------------------------------------------------------------------------
 

