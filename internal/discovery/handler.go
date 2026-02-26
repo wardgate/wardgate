@@ -10,11 +10,13 @@ import (
 
 // EndpointInfo describes an available endpoint for agents.
 type EndpointInfo struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Upstream    string   `json:"upstream,omitempty"` // Base URL of the upstream API (for version info)
-	DocsURL     string   `json:"docs_url"`           // Link to API documentation (empty if none)
-	Agents      []string `json:"-"`                  // Restrict visibility to specific agents (not serialized)
+	Name             string   `json:"name"`
+	Description      string   `json:"description,omitempty"`
+	Upstream         string   `json:"upstream,omitempty"`          // Base URL of the upstream API (for version info)
+	AllowedUpstreams []string `json:"allowed_upstreams,omitempty"` // Glob patterns for dynamic upstreams
+	Dynamic          bool     `json:"dynamic,omitempty"`           // True if endpoint supports dynamic upstreams
+	DocsURL          string   `json:"docs_url"`                    // Link to API documentation (empty if none)
+	Agents           []string `json:"-"`                           // Restrict visibility to specific agents (not serialized)
 }
 
 // EndpointsResponse is the response for GET /endpoints.

@@ -13,6 +13,7 @@ type Entry struct {
 	Endpoint       string `json:"endpoint,omitempty"`
 	Method         string `json:"method,omitempty"`
 	Path           string `json:"path,omitempty"`
+	Upstream       string `json:"upstream,omitempty"`
 	SourceIP       string `json:"source_ip,omitempty"`
 	AgentID        string `json:"agent,omitempty"`
 	Decision       string `json:"decision,omitempty"`
@@ -68,6 +69,9 @@ func (l *Logger) LogWithBody(e Entry, body string) {
 	}
 	if e.AgentID != "" {
 		event = event.Str("agent", e.AgentID)
+	}
+	if e.Upstream != "" {
+		event = event.Str("upstream", e.Upstream)
 	}
 	if e.Message != "" {
 		event = event.Str("message", e.Message)
