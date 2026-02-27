@@ -58,6 +58,7 @@ conclaves:
 
 - [Conclaves](conclaves.md) -- Isolated remote execution environments, policy rules, deployment
 - [wardgate-cli](wardgate-cli.md) -- Restricted HTTP client and conclave exec tool for agents
+- [wardgate-proxy](wardgate-proxy.md) -- Local reverse proxy for agents with their own HTTP clients, or tools
 - [wardgate-cli AI Skill](../skills/wardgate-cli/SKILL.md) -- Skill file to teach AI agents how to use wardgate-cli
 
 ### Operations
@@ -70,6 +71,7 @@ conclaves:
 Wardgate includes a web dashboard (`/ui/`) and CLI for managing approval requests. Configure `admin_key_env` in your server settings to enable. See the [README](../README.md) for an overview.
 
 The dashboard includes:
+
 - **Pending** -- Requests awaiting approval
 - **History** -- Past approval decisions
 - **Logs** -- Recent request activity with filtering

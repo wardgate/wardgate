@@ -78,6 +78,7 @@ flowchart LR
 - **Anomaly Detection** -- Alert on unusual patterns (suddenly fetching 100 emails, or things from the past?)
 - **Admin UI & CLI** -- Web dashboard and CLI for managing approvals, viewing logs, and monitoring activity
 - **wardgate-cli** -- Restricted HTTP client and conclave exec tool for agents; replaces `curl` and prevents connections to arbitrary URLs
+- **wardgate-proxy** -- Local reverse proxy for agents that use their own HTTP clients; injects the agent key transparently
 
 ## Who Is This For?
 
@@ -174,6 +175,7 @@ See [INSTALL.md](INSTALL.md) for all installation methods (pre-built binaries, D
 - [Configuration Reference](docs/config.md) -- All configuration options
 - [Conclaves](docs/conclaves.md) -- Isolated remote execution environments
 - [wardgate-cli](docs/wardgate-cli.md) -- Restricted HTTP client and conclave exec for agents
+- [wardgate-proxy](docs/wardgate-proxy.md) -- Local reverse proxy for agents with their own HTTP clients
 - [wardgate-cli AI Skill](skills/wardgate-cli/SKILL.md) -- Skill file to teach AI agents how to use wardgate-cli
 - [Deployment Guide](docs/deployment.md) -- Docker, Caddy, and production setup
 
