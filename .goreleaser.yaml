@@ -126,7 +126,8 @@ dockers_v2:
       "org.opencontainers.image.version": "{{.Version}}"
 
 brews:
-  - ids: [wardgate]
+  - name: wardgate
+    ids: [wardgate]
     repository:
       owner: wardgate
       name: homebrew-wardgate
@@ -137,7 +138,8 @@ brews:
     install: |
       bin.install "wardgate"
 
-  - ids: [wardgate-cli]
+  - name: wardgate-cli
+    ids: [wardgate-cli]
     repository:
       owner: wardgate
       name: homebrew-wardgate
@@ -148,7 +150,8 @@ brews:
     install: |
       bin.install "wardgate-cli"
 
-  - ids: [wardgate-exec]
+  - name: wardgate-exec
+    ids: [wardgate-exec]
     repository:
       owner: wardgate
       name: homebrew-wardgate
