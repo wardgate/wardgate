@@ -20,7 +20,6 @@ type sseFilterReader struct {
 }
 
 func (r *sseFilterReader) Read(p []byte) (int, error) {
-	// Return buffered data first
 	if r.buf.Len() > 0 {
 		return r.buf.Read(p)
 	}
@@ -29,13 +28,11 @@ func (r *sseFilterReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	// Initialize scanner on first read
 	if r.scanner == nil {
 		r.scanner = bufio.NewScanner(r.reader)
 		r.scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // 1MB max line
 	}
 
-	// Accumulate lines until we have a complete SSE message (blank line delimiter)
 	var lines []string
 	gotMessage := false
 
@@ -43,7 +40,6 @@ func (r *sseFilterReader) Read(p []byte) (int, error) {
 		line := r.scanner.Text()
 		lines = append(lines, line)
 
-		// Empty line marks end of an SSE message
 		if line == "" {
 			gotMessage = true
 			break
@@ -52,7 +48,8 @@ func (r *sseFilterReader) Read(p []byte) (int, error) {
 
 	if err := r.scanner.Err(); err != nil {
 		r.done = true
-		return 0, err
+		r.buf.WriteString("event: error\ndata: {\"error\":\"stream line too long\"}\n\n")
+		return r.buf.Read(p)
 	}
 
 	if !gotMessage && len(lines) == 0 {

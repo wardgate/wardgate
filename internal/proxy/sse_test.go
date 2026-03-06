@@ -240,3 +240,28 @@ func TestSSEFilterReader_EmptyStream(t *testing.T) {
 		t.Errorf("expected empty output for empty stream, got %q", string(output))
 	}
 }
+
+func TestSSEFilterReader_OversizedLine(t *testing.T) {
+	// Create a line that exceeds the 1MB scanner buffer limit.
+	// The scanner has a 1MB max token size; build a single line larger than that.
+	oversized := "data: " + strings.Repeat("x", 1024*1024+1) + "\n\n"
+	f := newTestFilter(t, filter.ActionRedact)
+
+	reader := &sseFilterReader{
+		reader: io.NopCloser(strings.NewReader(oversized)),
+		filter: f,
+	}
+
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := string(output)
+	if !strings.Contains(result, "event: error") {
+		t.Error("expected SSE error event for oversized line")
+	}
+	if !strings.Contains(result, "stream line too long") {
+		t.Error("expected 'stream line too long' message in error event")
+	}
+}
