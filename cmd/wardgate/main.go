@@ -19,6 +19,7 @@ import (
 	"github.com/wardgate/wardgate/internal/config"
 	"github.com/wardgate/wardgate/internal/discovery"
 	execpkg "github.com/wardgate/wardgate/internal/exec"
+	"github.com/wardgate/wardgate/internal/filter"
 	"github.com/wardgate/wardgate/internal/grants"
 	"github.com/wardgate/wardgate/internal/hub"
 	"github.com/wardgate/wardgate/internal/imap"
@@ -291,8 +292,24 @@ func main() {
 				}
 				p.SetAllowedSealHeaders(allowedHeaders)
 			}
+			// Wire filter for HTTP endpoints
+			if f, err := buildEndpointFilter(cfg, endpoint); err != nil {
+				log.Fatalf("Failed to build filter for endpoint %s: %v", name, err)
+			} else if f != nil {
+				p.SetFilter(f)
+			}
+			// Wire endpoint timeout
+			if endpoint.Timeout != "" {
+				if d, err := time.ParseDuration(endpoint.Timeout); err == nil {
+					p.SetTimeout(d)
+				}
+			}
 			h = auditMiddleware(auditLog, name, p)
-			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, endpoint.Upstream)
+			target := endpoint.Upstream
+			if target == "" {
+				target = fmt.Sprintf("dynamic(%d patterns)", len(endpoint.AllowedUpstreams))
+			}
+			log.Printf("Registered HTTP endpoint: /%s/ -> %s", name, target)
 		}
 
 		// Wrap with agent scope middleware if endpoint has agents restriction
@@ -307,11 +324,13 @@ func main() {
 	endpointInfos := make([]discovery.EndpointInfo, 0, len(cfg.Endpoints))
 	for name, endpoint := range cfg.Endpoints {
 		endpointInfos = append(endpointInfos, discovery.EndpointInfo{
-			Name:        name,
-			Description: cfg.GetEndpointDescription(name, endpoint),
-			Upstream:    endpoint.Upstream,
-			DocsURL:     endpoint.DocsURL,
-			Agents:      endpoint.Agents,
+			Name:             name,
+			Description:      cfg.GetEndpointDescription(name, endpoint),
+			Upstream:         endpoint.Upstream,
+			AllowedUpstreams: endpoint.AllowedUpstreams,
+			Dynamic:          len(endpoint.AllowedUpstreams) > 0,
+			DocsURL:          endpoint.DocsURL,
+			Agents:           endpoint.Agents,
 		})
 	}
 
@@ -403,6 +422,8 @@ func agentScopeMiddleware(agents []string, next http.Handler) http.Handler {
 func auditMiddleware(logger *audit.Logger, endpoint string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		// Capture dynamic upstream header before proxy strips it
+		upstream := r.Header.Get("X-Wardgate-Upstream")
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 
 		next.ServeHTTP(rw, r)
@@ -412,6 +433,7 @@ func auditMiddleware(logger *audit.Logger, endpoint string, next http.Handler) h
 			Endpoint:       endpoint,
 			Method:         r.Method,
 			Path:           r.URL.Path,
+			Upstream:       upstream,
 			SourceIP:       r.RemoteAddr,
 			AgentID:        r.Header.Get("X-Agent-ID"),
 			Decision:       decisionFromStatus(rw.status),
@@ -439,6 +461,13 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Flush implements http.Flusher, required for SSE streaming through the audit middleware.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func decisionFromStatus(status int) string {
 	switch {
 	case status == http.StatusForbidden:
@@ -450,6 +479,38 @@ func decisionFromStatus(status int) string {
 	default:
 		return "error"
 	}
+}
+
+// buildEndpointFilter creates a filter for an HTTP endpoint, merging filter_defaults with endpoint-specific settings.
+// Returns nil if no filter config is present.
+func buildEndpointFilter(cfg *config.Config, ep config.Endpoint) (*filter.Filter, error) {
+	fc := ep.Filter
+	if fc == nil {
+		fc = cfg.FilterDefaults
+	}
+	if fc == nil {
+		return nil, nil
+	}
+
+	enabled := true
+	if fc.Enabled != nil {
+		enabled = *fc.Enabled
+	}
+
+	filterCfg := filter.Config{
+		Enabled:     enabled,
+		Patterns:    fc.Patterns,
+		Action:      filter.ParseAction(fc.Action),
+		Replacement: fc.Replacement,
+		SSEMode:     fc.SSEMode,
+	}
+	for _, cp := range fc.CustomPatterns {
+		filterCfg.CustomPatterns = append(filterCfg.CustomPatterns, filter.CustomPattern{
+			Name:    cp.Name,
+			Pattern: cp.Pattern,
+		})
+	}
+	return filter.New(filterCfg)
 }
 
 // parseIMAPUpstream parses IMAP connection config from endpoint settings.

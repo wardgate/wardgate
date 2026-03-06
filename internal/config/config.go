@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -298,19 +300,21 @@ type AgentConfig struct {
 
 // Endpoint defines a proxied service.
 type Endpoint struct {
-	Preset       string            `yaml:"preset,omitempty"`      // Preset name (e.g., "todoist", "github")
-	Description  string            `yaml:"description,omitempty"` // User-friendly description for discovery API
-	Agents       []string          `yaml:"agents,omitempty"`      // Restrict to specific agents (empty = all)
-	Adapter      string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
-	Upstream     string            `yaml:"upstream,omitempty"`
-	DocsURL      string            `yaml:"docs_url,omitempty"` // Link to API documentation (optional, overrides preset)
-	Auth         AuthConfig        `yaml:"auth"`
-	Capabilities map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")
-	Rules        []Rule            `yaml:"rules,omitempty"`
-	IMAP         *IMAPConfig       `yaml:"imap,omitempty"`   // IMAP-specific settings
-	SMTP         *SMTPConfig       `yaml:"smtp,omitempty"`   // SMTP-specific settings
-	SSH          *SSHConfig        `yaml:"ssh,omitempty"`    // SSH-specific settings
-	Filter       *FilterConfig     `yaml:"filter,omitempty"` // Sensitive data filtering settings
+	Preset           string            `yaml:"preset,omitempty"`      // Preset name (e.g., "todoist", "github")
+	Description      string            `yaml:"description,omitempty"` // User-friendly description for discovery API
+	Agents           []string          `yaml:"agents,omitempty"`      // Restrict to specific agents (empty = all)
+	Adapter          string            `yaml:"adapter,omitempty"`     // "http" (default), "imap", or "smtp"
+	Upstream         string            `yaml:"upstream,omitempty"`
+	AllowedUpstreams []string          `yaml:"allowed_upstreams,omitempty"` // Glob patterns for dynamic upstream targets
+	Timeout          string            `yaml:"timeout,omitempty"`           // Upstream request timeout (e.g., "10m" for SSE streams)
+	DocsURL          string            `yaml:"docs_url,omitempty"`          // Link to API documentation (optional, overrides preset)
+	Auth             AuthConfig        `yaml:"auth"`
+	Capabilities     map[string]string `yaml:"capabilities,omitempty"` // Named capabilities with actions (e.g., "create_issues": "allow")
+	Rules            []Rule            `yaml:"rules,omitempty"`
+	IMAP             *IMAPConfig       `yaml:"imap,omitempty"`   // IMAP-specific settings
+	SMTP             *SMTPConfig       `yaml:"smtp,omitempty"`   // SMTP-specific settings
+	SSH              *SSHConfig        `yaml:"ssh,omitempty"`    // SSH-specific settings
+	Filter           *FilterConfig     `yaml:"filter,omitempty"` // Sensitive data filtering settings
 }
 
 // FilterConfig holds sensitive data filtering settings.
@@ -320,6 +324,7 @@ type FilterConfig struct {
 	CustomPatterns []CustomPatternConfig `yaml:"custom_patterns,omitempty"` // User-defined patterns
 	Action         string                `yaml:"action,omitempty"`          // redact, block, ask, log (default: block)
 	Replacement    string                `yaml:"replacement,omitempty"`     // Replacement text for redact action
+	SSEMode        string                `yaml:"sse_mode,omitempty"`        // SSE handling: "filter" (default) or "passthrough"
 }
 
 // CustomPatternConfig defines a user-created pattern.
@@ -669,8 +674,26 @@ func (c *Config) validate() error {
 			}
 			continue
 		}
-		if ep.Upstream == "" {
-			return fmt.Errorf("endpoint %q: missing upstream", name)
+		// allowed_upstreams is only valid for HTTP adapter
+		if len(ep.AllowedUpstreams) > 0 && adapter != "" && adapter != "http" {
+			return fmt.Errorf("endpoint %q: allowed_upstreams is only valid for HTTP adapter", name)
+		}
+		// Must have at least upstream or allowed_upstreams for HTTP endpoints
+		if ep.Upstream == "" && len(ep.AllowedUpstreams) == 0 {
+			return fmt.Errorf("endpoint %q: missing upstream (set upstream or allowed_upstreams)", name)
+		}
+		// Validate allowed_upstreams patterns have valid HTTP/HTTPS scheme
+		for _, pattern := range ep.AllowedUpstreams {
+			u, err := url.Parse(strings.ReplaceAll(pattern, "*", "WILDCARD"))
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				return fmt.Errorf("endpoint %q: allowed_upstreams pattern %q must have http:// or https:// scheme", name, pattern)
+			}
+		}
+		// Validate timeout
+		if ep.Timeout != "" {
+			if _, err := time.ParseDuration(ep.Timeout); err != nil {
+				return fmt.Errorf("endpoint %q: invalid timeout %q: %w", name, ep.Timeout, err)
+			}
 		}
 		if ep.Auth.Sealed {
 			if ep.Auth.CredentialEnv != "" {

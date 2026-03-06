@@ -33,6 +33,8 @@ var DefaultAllowedSealHeaders = []string{
 	"Proxy-Authorization",
 }
 
+const upstreamHeader = "X-Wardgate-Upstream"
+
 // Proxy handles HTTP requests to an endpoint.
 type Proxy struct {
 	endpoint           config.Endpoint
@@ -40,6 +42,7 @@ type Proxy struct {
 	vault              auth.Vault
 	engine             *policy.Engine
 	upstream           *url.URL
+	allowedUpstreams   []string
 	timeout            time.Duration
 	approvals          *approval.Manager
 	filter             *filter.Filter
@@ -78,20 +81,19 @@ func (p *Proxy) SetGrantStore(s *grants.Store) {
 	p.grantStore = s
 }
 
-// SetSSEMode is a placeholder for SSE mode configuration.
-func (p *Proxy) SetSSEMode(mode string) {
-	// TODO: Implement SSE mode support
-}
-
 // New creates a new proxy for the given endpoint.
 func New(endpoint config.Endpoint, vault auth.Vault, engine *policy.Engine) *Proxy {
-	upstream, _ := url.Parse(endpoint.Upstream)
+	var upstream *url.URL
+	if endpoint.Upstream != "" {
+		upstream, _ = url.Parse(endpoint.Upstream)
+	}
 	return &Proxy{
-		endpoint: endpoint,
-		vault:    vault,
-		engine:   engine,
-		upstream: upstream,
-		timeout:  30 * time.Second,
+		endpoint:         endpoint,
+		vault:            vault,
+		engine:           engine,
+		upstream:         upstream,
+		allowedUpstreams: endpoint.AllowedUpstreams,
+		timeout:          30 * time.Second,
 	}
 }
 
@@ -164,6 +166,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Resolve upstream target
+	target, err := p.resolveUpstream(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Get credential (skip for sealed — agent provides credentials)
 	var cred string
 	if p.endpoint.Auth.Sealed {
@@ -179,7 +188,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		var err error
 		cred, err = p.vault.Get(p.endpoint.Auth.CredentialEnv)
 		if err != nil {
 			http.Error(w, "credential error", http.StatusInternalServerError)
@@ -190,10 +198,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Create reverse proxy
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
-			req.URL.Scheme = p.upstream.Scheme
-			req.URL.Host = p.upstream.Host
-			req.URL.Path = p.upstream.Path + r.URL.Path
-			req.Host = p.upstream.Host
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = target.Path + r.URL.Path
+			req.Host = target.Host
+
+			// Strip the upstream header before forwarding
+			req.Header.Del(upstreamHeader)
 
 			if p.endpoint.Auth.Sealed && p.sealer != nil {
 				p.processSealedHeaders(req, r.Header)
@@ -206,6 +217,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 		ModifyResponse: p.modifyResponse,
+		FlushInterval:  -1, // Enable immediate flushing for streaming responses
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if ctx := r.Context(); ctx.Err() == context.DeadlineExceeded {
 				http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
@@ -221,6 +233,34 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	proxy.ServeHTTP(w, r)
+}
+
+// resolveUpstream determines the target upstream URL from the request.
+// Priority: X-Wardgate-Upstream header > static upstream config.
+func (p *Proxy) resolveUpstream(r *http.Request) (*url.URL, error) {
+	headerVal := r.Header.Get(upstreamHeader)
+
+	if headerVal != "" {
+		// Dynamic upstream requested - validate against allowed patterns
+		if len(p.allowedUpstreams) == 0 {
+			return nil, fmt.Errorf("dynamic upstream not allowed: endpoint has no allowed_upstreams configured")
+		}
+		if !MatchUpstream(headerVal, p.allowedUpstreams) {
+			return nil, fmt.Errorf("upstream %q not in allowed list", headerVal)
+		}
+		u, err := url.Parse(headerVal)
+		if err != nil {
+			return nil, fmt.Errorf("invalid upstream URL: %w", err)
+		}
+		return u, nil
+	}
+
+	// Fall back to static upstream
+	if p.upstream != nil {
+		return p.upstream, nil
+	}
+
+	return nil, fmt.Errorf("no upstream configured and no %s header provided", upstreamHeader)
 }
 
 // processSealedHeaders decrypts X-Wardgate-Sealed-* headers and sets the real
@@ -259,8 +299,26 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 		return nil
 	}
 
-	// Only filter text-based responses
 	contentType := resp.Header.Get("Content-Type")
+
+	// Handle SSE streams — must come before isTextContent because
+	// "text/event-stream" matches the "text/" prefix check.
+	if isSSEContent(contentType) {
+		if p.filter.SSEMode() == "passthrough" {
+			return nil
+		}
+		// Wrap body with SSE filter reader for per-message filtering
+		resp.Body = &sseFilterReader{
+			reader: resp.Body,
+			filter: p.filter,
+		}
+		// Remove Content-Length since we're streaming and size may change
+		resp.Header.Del("Content-Length")
+		resp.ContentLength = -1
+		return nil
+	}
+
+	// Only filter text-based responses
 	if !isTextContent(contentType) {
 		return nil
 	}
@@ -278,7 +336,8 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 	// Handle based on action
 	if p.filter.ShouldBlock(matches) {
 		// Return error response - replace body with error message
-		errMsg := fmt.Sprintf(`{"error": "response blocked", "reason": "%s"}`, filter.MatchDescription(matches))
+		// Generic message — do not leak filter pattern names to clients.
+		errMsg := `{"error": "response blocked"}`
 		resp.Body = io.NopCloser(bytes.NewBufferString(errMsg))
 		resp.ContentLength = int64(len(errMsg))
 		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(errMsg)))
@@ -298,6 +357,11 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 	}
 
 	return nil
+}
+
+// isSSEContent checks if the content type is a Server-Sent Events stream.
+func isSSEContent(contentType string) bool {
+	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
 }
 
 // isTextContent checks if the content type is text-based and should be filtered.

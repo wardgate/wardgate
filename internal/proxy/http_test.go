@@ -1055,3 +1055,393 @@ func TestProxy_SealedMultipleValuesForSameHeader(t *testing.T) {
 		t.Error("sealed header prefix should be stripped")
 	}
 }
+
+func TestProxy_DynamicUpstreamAllowed(t *testing.T) {
+	var receivedHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHost = r.Host
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		AllowedUpstreams: []string{upstream.URL},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("X-Wardgate-Upstream", upstream.URL)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if receivedHost == "" {
+		t.Error("expected request to reach upstream")
+	}
+}
+
+func TestProxy_DynamicUpstreamDenied(t *testing.T) {
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		AllowedUpstreams: []string{"https://api.github.com"},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("X-Wardgate-Upstream", "https://evil.example.com")
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for denied upstream, got %d", rec.Code)
+	}
+}
+
+func TestProxy_DynamicUpstreamFallsBackToStatic(t *testing.T) {
+	var receivedAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream:         upstream.URL,
+		AllowedUpstreams: []string{"https://other.example.com"},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	// No X-Wardgate-Upstream header - should use static upstream
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for static fallback, got %d", rec.Code)
+	}
+	if receivedAuth != "Bearer token" {
+		t.Errorf("expected bearer token to be injected, got %q", receivedAuth)
+	}
+}
+
+func TestProxy_DynamicUpstreamHeaderStripped(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		AllowedUpstreams: []string{upstream.URL},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("X-Wardgate-Upstream", upstream.URL)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if receivedHeaders.Get("X-Wardgate-Upstream") != "" {
+		t.Error("X-Wardgate-Upstream header should be stripped before forwarding")
+	}
+}
+
+func TestProxy_DynamicUpstreamPolicyStillApplies(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called when policy denies")
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		AllowedUpstreams: []string{upstream.URL},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	// Policy denies DELETE
+	engine := policy.New([]config.Rule{
+		{Match: config.Match{Method: "DELETE"}, Action: "deny", Message: "no deletes"},
+	})
+
+	proxy := New(endpoint, vault, engine)
+	req := httptest.NewRequest("DELETE", "/tasks/123", nil)
+	req.Header.Set("X-Wardgate-Upstream", upstream.URL)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for policy deny with dynamic upstream, got %d", rec.Code)
+	}
+}
+
+func TestProxy_DynamicUpstreamNoHeaderNoStatic(t *testing.T) {
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		AllowedUpstreams: []string{"https://api.example.com"},
+		Auth:             config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	// No X-Wardgate-Upstream header and no static upstream
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when no upstream available, got %d", rec.Code)
+	}
+}
+
+func TestProxy_DynamicUpstreamNotConfigured(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	// Sending X-Wardgate-Upstream when no allowed_upstreams configured
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("X-Wardgate-Upstream", "https://evil.example.com")
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when no allowed_upstreams configured, got %d", rec.Code)
+	}
+}
+
+func TestProxy_SSEPassthroughNoFilter(t *testing.T) {
+	sseData := "data: {\"text\": \"hello\"}\n\ndata: [DONE]\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	proxy := New(endpoint, vault, engine)
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for SSE stream, got %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if string(body) != sseData {
+		t.Errorf("expected SSE data to pass through\ngot:  %q\nwant: %q", string(body), sseData)
+	}
+}
+
+func TestProxy_SSEFilterRedact(t *testing.T) {
+	// SSE stream with an API key in data
+	sseData := "data: {\"key\": \"sk-1234567890abcdef1234567890abcdef\"}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	f, err := filter.New(filter.Config{
+		Enabled:     true,
+		Patterns:    []string{"api_keys"},
+		Action:      filter.ActionRedact,
+		Replacement: "[REDACTED]",
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for SSE redact, got %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "sk-1234567890abcdef1234567890abcdef") {
+		t.Error("expected sensitive data to be redacted from SSE stream")
+	}
+	if !strings.Contains(bodyStr, "[REDACTED]") {
+		t.Error("expected redaction marker in SSE output")
+	}
+}
+
+func TestProxy_SSEFilterBlock(t *testing.T) {
+	sseData := "data: {\"key\": \"sk-1234567890abcdef1234567890abcdef\"}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"api_keys"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	body, _ := io.ReadAll(rec.Body)
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "event: error") {
+		t.Error("expected error event in blocked SSE stream")
+	}
+	if !strings.Contains(bodyStr, "response blocked") {
+		t.Error("expected blocked message in SSE error event")
+	}
+}
+
+func TestProxy_SSEPassthroughMode(t *testing.T) {
+	// SSE with sensitive data should pass through when sse_mode is "passthrough"
+	sseData := "data: {\"key\": \"sk-1234567890abcdef1234567890abcdef\"}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"api_keys"},
+		Action:   filter.ActionBlock,
+		SSEMode:  "passthrough",
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for SSE passthrough mode, got %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if string(body) != sseData {
+		t.Errorf("expected SSE data to pass through in passthrough mode\ngot:  %q\nwant: %q", string(body), sseData)
+	}
+}
+
+func TestProxy_NonSSEFilterUnchanged(t *testing.T) {
+	// Non-SSE text responses should still be buffered and filtered as before
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Your verification code is 123456"}`))
+	}))
+	defer upstream.Close()
+
+	vault := &mockVault{creds: map[string]string{"TEST_CRED": "token"}}
+	endpoint := config.Endpoint{
+		Upstream: upstream.URL,
+		Auth:     config.AuthConfig{Type: "bearer", CredentialEnv: "TEST_CRED"},
+	}
+	engine := policy.New([]config.Rule{{Match: config.Match{Method: "*"}, Action: "allow"}})
+
+	f, err := filter.New(filter.Config{
+		Enabled:  true,
+		Patterns: []string{"otp_codes"},
+		Action:   filter.ActionBlock,
+	})
+	if err != nil {
+		t.Fatalf("failed to create filter: %v", err)
+	}
+
+	proxy := New(endpoint, vault, engine)
+	proxy.SetFilter(f)
+
+	req := httptest.NewRequest("GET", "/verify", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	// Non-SSE should still be blocked by filter
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for non-SSE blocked content, got %d", rec.Code)
+	}
+}
