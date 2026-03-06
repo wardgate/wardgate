@@ -6,6 +6,7 @@ Wardgate has three binaries:
 |--------|---------|
 | `wardgate` | The gateway server -- proxies API calls and routes conclave commands |
 | `wardgate-cli` | Agent-side tool -- restricted HTTP client and conclave exec; replaces `curl` |
+| `wardgate-proxy` | Local reverse proxy for sandboxed agents that use their own HTTP clients -- injects the agent key transparently without requiring shell access or restarts |
 | `wardgate-exec` | Runs inside each conclave -- connects to Wardgate, executes commands |
 
 ## Homebrew (macOS / Linux)
@@ -40,6 +41,7 @@ Requires Go 1.22+.
 ```bash
 go install github.com/wardgate/wardgate/cmd/wardgate@latest
 go install github.com/wardgate/wardgate/cmd/wardgate-cli@latest
+go install github.com/wardgate/wardgate/cmd/wardgate-proxy@latest
 go install github.com/wardgate/wardgate/cmd/wardgate-exec@latest
 ```
 
@@ -55,6 +57,7 @@ cd wardgate
 
 go build -o wardgate ./cmd/wardgate
 go build -o wardgate-cli ./cmd/wardgate-cli
+go build -o wardgate-proxy ./cmd/wardgate-proxy
 go build -o wardgate-exec ./cmd/wardgate-exec
 ```
 
@@ -135,6 +138,35 @@ ca_file: /etc/wardgate-cli/ca.pem
 - The config path is fixed at build time -- agents cannot override it
 
 See [wardgate-cli documentation](docs/wardgate-cli.md) for full details. To teach an AI agent how to use `wardgate-cli`, copy the [wardgate-cli AI Skill](skills/wardgate-cli/SKILL.md) into your agent's skill/tool directory.
+
+## wardgate-proxy Setup
+
+`wardgate-proxy` is a local reverse proxy for agents that use their own HTTP clients (Python `requests`, Node `fetch`, etc.). The agent makes plain HTTP requests to the proxy, and the proxy forwards them to Wardgate with the agent key injected.
+
+Create a config file (default: `wardgate-proxy.yaml`):
+
+```yaml
+server: https://wardgate.example.com
+key: "your-agent-key"
+listen: 127.0.0.1:18080
+```
+
+Or with the key in an environment variable:
+
+```yaml
+server: https://wardgate.example.com
+key_env: WARDGATE_AGENT_KEY
+```
+
+Start the proxy:
+
+```bash
+wardgate-proxy
+```
+
+The agent sends requests to `http://127.0.0.1:18080/...` and the proxy injects the agent key and forwards to Wardgate. When using `key` in the config, rotation is automatic -- update the key in the config file and the proxy picks it up on the next request.
+
+See [wardgate-proxy documentation](docs/wardgate-proxy.md) for full details.
 
 ## wardgate-exec / Conclave Setup
 
