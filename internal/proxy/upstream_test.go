@@ -23,8 +23,32 @@ func TestMatchUpstream_GlobSubdomain(t *testing.T) {
 		{"https://storage.googleapis.com", true},
 		{"https://compute.googleapis.com", true},
 		{"https://googleapis.com", false},
-		{"https://evil.com.googleapis.com", true}, // single * matches one segment
-		{"http://storage.googleapis.com", false},  // scheme mismatch
+		{"https://evil.com.googleapis.com", false}, // * matches one segment only
+		{"http://storage.googleapis.com", false},   // scheme mismatch
+	}
+
+	for _, tt := range tests {
+		got := MatchUpstream(tt.url, patterns)
+		if got != tt.want {
+			t.Errorf("MatchUpstream(%q) = %v, want %v", tt.url, got, tt.want)
+		}
+	}
+}
+
+func TestMatchUpstream_DoubleStarSubdomain(t *testing.T) {
+	patterns := []string{"https://**.googleapis.com"}
+
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"https://storage.googleapis.com", true},
+		{"https://compute.googleapis.com", true},
+		{"https://googleapis.com", false},                     // ** requires at least one segment
+		{"https://intended.com.googleapis.com", true},         // ** matches multiple segments
+		{"https://deep.nested.sub.googleapis.com", true},      // ** matches many segments
+		{"http://storage.googleapis.com", false},              // scheme mismatch
+		{"https://storage.googleapis.com/some/path", true},    // path allowed
 	}
 
 	for _, tt := range tests {

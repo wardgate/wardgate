@@ -1230,10 +1230,14 @@ Authorization: Bearer <agent-key>
 
 Patterns use glob-style matching with scheme enforcement:
 
+- `*` matches exactly **one** hostname segment (between dots)
+- `**` matches **one or more** hostname segments (across dots)
+
 | Pattern | Matches | Does Not Match |
 |---------|---------|----------------|
 | `https://api.example.com` | `https://api.example.com/any/path` | `http://api.example.com` (scheme mismatch) |
-| `https://*.googleapis.com` | `https://storage.googleapis.com` | `https://googleapis.com` (no subdomain) |
+| `https://*.googleapis.com` | `https://storage.googleapis.com` | `https://googleapis.com` (no subdomain), `https://evil.com.googleapis.com` (`*` is single segment) |
+| `https://**.googleapis.com` | `https://storage.googleapis.com`, `https://intended.com.googleapis.com` | `https://googleapis.com` (`**` requires at least one segment) |
 | `https://api.example.com/v1` | `https://api.example.com/v1/users` | `https://api.example.com/v1-admin` (path segment boundary) |
 
 Hostname matching is case-insensitive. Path matching enforces segment boundaries (`/v1` matches `/v1/foo` but not `/v1-admin`).
