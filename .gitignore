@@ -7,6 +7,7 @@ grants.json
 /wardgate
 /wardgate-cli
 /wardgate-exec
+/wardgate-proxy
 /config/
 
 CLAUDE.md
