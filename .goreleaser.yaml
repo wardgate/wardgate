@@ -56,6 +56,24 @@ builds:
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 
+  - id: wardgate-proxy
+    main: ./cmd/wardgate-proxy
+    binary: wardgate-proxy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
 archives:
   - id: wardgate
     ids:
@@ -88,6 +106,18 @@ archives:
       - wardgate-exec
     formats: [tar.gz]
     name_template: "wardgate-exec_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+  - id: wardgate-proxy
+    ids:
+      - wardgate-proxy
+    formats: [tar.gz]
+    name_template: "wardgate-proxy_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -161,6 +191,18 @@ brews:
     license: "AGPL-3.0"
     install: |
       bin.install "wardgate-exec"
+
+  - name: wardgate-proxy
+    ids: [wardgate-proxy]
+    repository:
+      owner: wardgate
+      name: homebrew-wardgate
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/wardgate/wardgate"
+    description: "API gateway for AI agents - local reverse proxy"
+    license: "AGPL-3.0"
+    install: |
+      bin.install "wardgate-proxy"
 
 release:
   github:

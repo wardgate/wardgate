@@ -295,6 +295,107 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 	}
 }
 
+// --- resolveConfig tests ---
+
+func TestResolveConfig_ExplicitMissingFile(t *testing.T) {
+	_, err := resolveConfig("/nonexistent/config.yaml", true, "", "", "")
+	if err == nil {
+		t.Fatal("expected error for explicit missing config")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+func TestResolveConfig_InvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("{{{invalid"), 0o600)
+
+	_, err := resolveConfig(path, true, "", "", "")
+	if err == nil {
+		t.Fatal("expected error for invalid YAML")
+	}
+	if !strings.Contains(err.Error(), "parsing config") {
+		t.Errorf("expected 'parsing config' in error, got: %v", err)
+	}
+}
+
+func TestResolveConfig_MissingServer(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("key: my-key\n"), 0o600)
+
+	_, err := resolveConfig(path, true, "", "", "")
+	if err == nil {
+		t.Fatal("expected error for missing server")
+	}
+	if !strings.Contains(err.Error(), "server URL not configured") {
+		t.Errorf("expected 'server URL not configured' in error, got: %v", err)
+	}
+}
+
+func TestResolveConfig_MissingKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("server: https://example.com\n"), 0o600)
+
+	_, err := resolveConfig(path, true, "", "", "")
+	if err == nil {
+		t.Fatal("expected error for missing key")
+	}
+	if !strings.Contains(err.Error(), "agent key not configured") {
+		t.Errorf("expected 'agent key not configured' in error, got: %v", err)
+	}
+}
+
+func TestResolveConfig_ValidConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("server: https://example.com\nkey: my-key\nlisten: 127.0.0.1:9090\n"), 0o600)
+
+	cfg, err := resolveConfig(path, true, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server != "https://example.com" {
+		t.Errorf("server: got %q", cfg.Server)
+	}
+	if cfg.Key != "my-key" {
+		t.Errorf("key: got %q", cfg.Key)
+	}
+	if cfg.Listen != "127.0.0.1:9090" {
+		t.Errorf("listen: got %q", cfg.Listen)
+	}
+}
+
+func TestResolveConfig_FlagOverrides(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("server: https://example.com\nkey: my-key\n"), 0o600)
+
+	cfg, err := resolveConfig(path, true, "0.0.0.0:8080", "https://override.com", "MY_KEY_ENV")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Listen != "0.0.0.0:8080" {
+		t.Errorf("listen: got %q, want 0.0.0.0:8080", cfg.Listen)
+	}
+	if cfg.Server != "https://override.com" {
+		t.Errorf("server: got %q, want https://override.com", cfg.Server)
+	}
+	if cfg.KeyEnv != "MY_KEY_ENV" {
+		t.Errorf("key_env: got %q, want MY_KEY_ENV", cfg.KeyEnv)
+	}
+}
+
+func TestResolveConfig_ImplicitMissingFileUsesDefaults(t *testing.T) {
+	_, err := resolveConfig("/nonexistent/config.yaml", false, "", "https://example.com", "MY_KEY")
+	if err != nil {
+		t.Fatalf("unexpected error for implicit missing config with flag overrides: %v", err)
+	}
+}
+
 // --- Proxy handler unit tests ---
 
 func TestProxyHandler_InjectsBearer(t *testing.T) {

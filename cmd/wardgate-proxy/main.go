@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"log"
@@ -17,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wardgate/wardgate/internal/cli"
 	"gopkg.in/yaml.v3"
 )
 
@@ -132,24 +132,12 @@ func (cr *configKeyReader) Read() (string, error) {
 }
 
 func buildTransport(caFile string) (*http.Transport, error) {
-	tlsCfg := &tls.Config{}
-
-	if caFile != "" {
-		pem, err := os.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("read ca_file: %w", err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("ca_file: no valid PEM certificates")
-		}
-		tlsCfg.RootCAs = pool
+	cliCfg := &cli.Config{CAFile: caFile}
+	rootCAs, err := cliCfg.LoadRootCAs()
+	if err != nil {
+		return nil, err
 	}
-
-	return &http.Transport{TLSClientConfig: tlsCfg}, nil
+	return &http.Transport{TLSClientConfig: &tls.Config{RootCAs: rootCAs}}, nil
 }
 
 // NewProxyHandler builds an http.Handler that reads an agent key from keyReader
@@ -188,16 +176,16 @@ type contextKey string
 const ctxAgentKey contextKey = "agentKey"
 
 // resolveConfig loads the config file and applies flag overrides.
-func resolveConfig(configPath string, configExplicit bool, listen, server, keyEnv string) *Config {
+func resolveConfig(configPath string, configExplicit bool, listen, server, keyEnv string) (*Config, error) {
 	cfg := &Config{Listen: "127.0.0.1:18080"}
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if configExplicit {
-			log.Fatalf("Error: config file %s not found", configPath)
+			return nil, fmt.Errorf("config file %s not found", configPath)
 		}
 	} else {
 		if err := yaml.Unmarshal(data, cfg); err != nil {
-			log.Fatalf("Error parsing config %s: %v", configPath, err)
+			return nil, fmt.Errorf("parsing config %s: %w", configPath, err)
 		}
 	}
 
@@ -215,12 +203,12 @@ func resolveConfig(configPath string, configExplicit bool, listen, server, keyEn
 		cfg.Listen = "127.0.0.1:18080"
 	}
 	if cfg.Server == "" {
-		log.Fatal("Error: server URL not configured (set server in config or use -server flag)")
+		return nil, fmt.Errorf("server URL not configured (set server in config or use -server flag)")
 	}
 	if cfg.Key == "" && cfg.KeyEnv == "" {
-		log.Fatal("Error: agent key not configured (set key or key_env in config, or use -key-env flag)")
+		return nil, fmt.Errorf("agent key not configured (set key or key_env in config, or use -key-env flag)")
 	}
-	return cfg
+	return cfg, nil
 }
 
 func main() {
@@ -243,7 +231,10 @@ func main() {
 		}
 	})
 
-	cfg := resolveConfig(*configPath, configExplicit, *listenFlag, *serverFlag, *keyEnvFlag)
+	cfg, err := resolveConfig(*configPath, configExplicit, *listenFlag, *serverFlag, *keyEnvFlag)
+	if err != nil {
+		log.Fatalf("Error: %v", err)
+	}
 
 	upstream, err := url.Parse(cfg.Server)
 	if err != nil {
